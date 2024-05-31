@@ -1,4 +1,3 @@
-import networkx as nx
 import torch_geometric
 from toponetx.classes import CellComplex
 
@@ -50,7 +49,7 @@ class NeighborhoodLifting(Graph2CellLifting):
         for v in vertices:
             neighbors = list(G.neighbors(v))
             if len(neighbors) > 1:
-                two_cell = [v] + neighbors
+                two_cell = [v, *neighbors]
                 if (
                     self.max_cell_length is not None
                     and len(two_cell) > self.max_cell_length
