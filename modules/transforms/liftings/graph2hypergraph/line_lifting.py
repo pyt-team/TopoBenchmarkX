@@ -53,8 +53,6 @@ class HypergraphLineLifting(Graph2HypergraphLifting):
 
         return {
             "incidence_hyperedges": incidence_1,
-            # "num_nodes": num_nodes,
-            "num_hyperedges": num_hyperedges,
+            # "num_hyperedges": num_hyperedges,
             "x_0": x_0,
-            "x_1": data.x,
         }
