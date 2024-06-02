@@ -1,0 +1,6 @@
+transform_type: 'lifting'
+transform_name: "SimplicialDnDLifting"
+complex_dim: 6
+preserve_edge_attr: False
+signed: True
+feature_lifting: ProjectionSum
