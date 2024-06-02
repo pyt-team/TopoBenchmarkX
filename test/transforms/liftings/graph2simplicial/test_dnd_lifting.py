@@ -10,8 +10,8 @@ from modules.transforms.liftings.graph2simplicial.dnd_lifting import (
 )
 
 
-class TestSimplicialEccentricityLifting:
-    """Test the SimplicialEccentricityLifting class."""
+class TestSimplicialDnDLifting:
+    """Test the SimplicialDnDLifting class."""
 
     def setup_method(self):
         # Load the graph
