@@ -1,9 +1,7 @@
-import networkx as nx
 import torch
 import torch_geometric
 from toponetx.classes import SimplicialComplex
 
-from modules.data.utils.utils import get_complex_connectivity
 from modules.transforms.liftings.graph2simplicial.base import Graph2SimplicialLifting
 
 
@@ -51,6 +49,4 @@ class NeighborhoodComplexLifting(Graph2SimplicialLifting):
 
         graph = simplicial_complex.graph_skeleton()
 
-        lifted_topology = self._get_lifted_topology(simplicial_complex, graph)
-
-        return lifted_topology
+        return self._get_lifted_topology(simplicial_complex, graph)

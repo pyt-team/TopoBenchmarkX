@@ -3,7 +3,6 @@
 import torch
 import torch_geometric
 
-from modules.data.utils.utils import load_manual_graph
 from modules.transforms.liftings.graph2simplicial.neighborhood_lifting import (
     NeighborhoodComplexLifting,
 )
