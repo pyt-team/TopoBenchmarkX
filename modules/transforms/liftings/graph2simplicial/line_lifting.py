@@ -48,7 +48,7 @@ class SimplicialLineLifting(Graph2SimplicialLifting):
         node_features = {
             node: (
                 (data.x[next(iter(node))[0], :] + data.x[next(iter(node))[1], :]) / 2
-            ).item()
+            )
             for node in list(simplicial_complex.nodes)
         }
 
