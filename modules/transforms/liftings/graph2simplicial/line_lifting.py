@@ -1,5 +1,4 @@
 import networkx as nx
-import torch
 import torch_geometric
 from toponetx.classes import SimplicialComplex
 
@@ -39,19 +38,37 @@ class SimplicialLineLifting(Graph2SimplicialLifting):
         graph = self._generate_graph_from_data(data)
         line_graph = nx.line_graph(graph)
 
+        node_features = {
+            node: ((data.x[node[0], :] + data.x[node[1], :]) / 2)
+            for node in list(line_graph.nodes)
+        }
+
+        print(node_features)
+
         cliques = nx.find_cliques(line_graph)
         simplices = list(map(lambda x: set(x), cliques))
 
-        simplicial_complex = SimplicialComplex(simplices=simplices)
-        self.complex_dim = simplicial_complex.dim
-
-        node_features = {
-            node: (
-                (data.x[next(iter(node))[0], :] + data.x[next(iter(node))[1], :]) / 2
-            )
-            for node in list(simplicial_complex.nodes)
+        # we need to rename simplices here since now vertices are named as pairs
+        self.rename_vertices_dict = {node: i for i, node in enumerate(line_graph.nodes)}
+        self.rename_vertices_dict_inverse = {
+            i: node for i, node in enumerate(line_graph.nodes)
         }
 
-        simplicial_complex.set_simplex_attributes(node_features, name="features")
+        renamed_simplices = [
+            {self.rename_vertices_dict.get(vertex) for vertex in simplex}
+            for simplex in simplices
+        ]
+
+        renamed_node_features = {
+            self.rename_vertices_dict[node]: value
+            for node, value in node_features.items()
+        }
+
+        simplicial_complex = SimplicialComplex(simplices=renamed_simplices)
+        self.complex_dim = simplicial_complex.dim
+
+        simplicial_complex.set_simplex_attributes(
+            renamed_node_features, name="features"
+        )
 
         return self._get_lifted_topology(simplicial_complex, line_graph)
