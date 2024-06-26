@@ -1,12 +1,10 @@
 import torch
 import torch_geometric
 from toponetx.classes import SimplicialComplex
-
 from modules.transforms.liftings.graph2simplicial.base import Graph2SimplicialLifting
 
-
 class NeighborhoodComplexLifting(Graph2SimplicialLifting):
-    r"""Lifts graphs to simplicial complex domain by constructing the neighborhood complex[1].
+    r"""Liftss graphs to simplicial complex domain by constructing the neighborhood complex[1].
 
     Parameters
     ----------
