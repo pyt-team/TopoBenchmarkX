@@ -21,7 +21,7 @@ class NeighborhoodComplexLifting(Graph2SimplicialLifting):
 
         Parameters
         ----------
-        data : torch_geometric.data.Data
+        data : torch_geometric.data.Dataa
             The input data to be lifted.
 
         Returns
