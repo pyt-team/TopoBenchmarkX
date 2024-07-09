@@ -43,19 +43,18 @@ class SimplicialLineLifting(Graph2SimplicialLifting):
             for node in list(line_graph.nodes)
         }
 
-        print(node_features)
-
         cliques = nx.find_cliques(line_graph)
-        simplices = list(map(lambda x: set(x), cliques))
+        simplices = list(cliques)  # list(map(lambda x: set(x), cliques))
 
         # we need to rename simplices here since now vertices are named as pairs
         self.rename_vertices_dict = {node: i for i, node in enumerate(line_graph.nodes)}
         self.rename_vertices_dict_inverse = {
-            i: node for i, node in enumerate(line_graph.nodes)
+            i: node for node, i in self.rename_vertices_dict.items()
         }
+        renamed_line_graph = nx.relabel_nodes(line_graph, self.rename_vertices_dict)
 
         renamed_simplices = [
-            {self.rename_vertices_dict.get(vertex) for vertex in simplex}
+            {self.rename_vertices_dict[vertex] for vertex in simplex}
             for simplex in simplices
         ]
 
@@ -71,4 +70,4 @@ class SimplicialLineLifting(Graph2SimplicialLifting):
             renamed_node_features, name="features"
         )
 
-        return self._get_lifted_topology(simplicial_complex, line_graph)
+        return self._get_lifted_topology(simplicial_complex, renamed_line_graph)
