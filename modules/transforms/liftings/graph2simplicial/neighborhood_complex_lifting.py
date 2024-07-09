@@ -46,8 +46,9 @@ class NeighborhoodComplexLifting(Graph2SimplicialLifting):
             simplicial_complex.add_simplex(neighbourhood_complex)
 
         feature_dict = {
-            i: torch.zeros(data["x"].size(1)) for i in range(data["x"].size(0))
+            i: f for i, f in enumerate(data["x"])
         }
+
 
         simplicial_complex.set_simplex_attributes(feature_dict, name="features")
 
