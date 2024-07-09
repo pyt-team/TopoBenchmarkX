@@ -1,10 +1,10 @@
-import torch
 import networkx as nx
+import torch
 from torch_geometric.utils.convert import from_networkx
 
 from modules.data.utils.utils import load_manual_graph
 from modules.transforms.liftings.graph2simplicial.neighborhood_complex_lifting import (
-    NeighborhoodComplexLifting
+    NeighborhoodComplexLifting,
 )
 
 
@@ -22,12 +22,12 @@ class TestNeighborhoodComplexLifting:
         # Intialize an empty graph for testing purpouses
         self.empty_graph = nx.empty_graph(10)
         self.empty_data = from_networkx(self.empty_graph)
-        self.empty_data['x'] = torch.rand((10, 10))
+        self.empty_data["x"] = torch.rand((10, 10))
 
         # Intialize a random graph for testing purpouses
         self.random_graph = nx.fast_gnp_random_graph(10, 0.5)
         self.random_data = from_networkx(self.random_graph)
-        self.random_data['x'] = torch.rand((10, 10))
+        self.random_data["x"] = torch.rand((10, 10))
 
     def test_lift_topology_random_graph(self):
         """ Verifies that the lifting procedure works on
@@ -37,7 +37,7 @@ class TestNeighborhoodComplexLifting:
         lifted_data = self.lifting_unsigned.forward(self.random_data)
         # For each set of simplices
         for r in range(1, self.lifting_unsigned.complex_dim):
-            idx_str = f'x_idx_{r}'
+            idx_str = f"x_idx_{r}"
 
             # Found maximum dimension
             if idx_str not in lifted_data:

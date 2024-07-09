@@ -1,10 +1,11 @@
 import networkx as nx
-from networkx import Graph
 import torch
-from torch_geometric.utils.convert import to_networkx
-from torch_geometric.data import Data
-from modules.transforms.liftings.graph2simplicial.base import Graph2SimplicialLifting
 from toponetx.classes import SimplicialComplex
+from torch_geometric.data import Data
+from torch_geometric.utils.convert import to_networkx
+
+from modules.transforms.liftings.graph2simplicial.base import Graph2SimplicialLifting
+
 
 class NeighborhoodComplexLifting(Graph2SimplicialLifting):
     """ Lifts graphs to a simplicial complex domain by identifying the neighborhood complex as k-simplices.
@@ -45,15 +46,15 @@ class NeighborhoodComplexLifting(Graph2SimplicialLifting):
             simplicial_complex.add_simplex(neighbourhood_complex)
 
         feature_dict = {}
-        for i, f in enumerate(data['x']):
+        for i, f in enumerate(data["x"]):
             feature_dict[i] = f
 
-        simplicial_complex.set_simplex_attributes(feature_dict, name='features')
+        simplicial_complex.set_simplex_attributes(feature_dict, name="features")
 
-        return self._get_lifted_topology(simplicial_complex, graph) 
+        return self._get_lifted_topology(simplicial_complex, graph)
 
     def _get_lifted_topology(self, simplicial_complex: SimplicialComplex, graph: nx.Graph) -> dict:
         data = super()._get_lifted_topology(simplicial_complex, graph)
         for r in range(simplicial_complex.dim):
-            data[f'x_idx_{r}'] = torch.tensor(simplicial_complex.skeleton(r))
+            data[f"x_idx_{r}"] = torch.tensor(simplicial_complex.skeleton(r))
         return data
