@@ -24,12 +24,14 @@ class HypergraphHeatLifting(Hypergraph2SimplicialLifting):
 
         Parameters
         ----------
-        data : torch_geometric.data.Data
-            The input data to be lifted.
+        data : ColoredHyperGraph
+            The input hypgraph to be 'lifted' to a simplicial complex
 
         Returns
         -------
         dict
             The lifted topology.
         """
-        pass
+        ## Features in xp
+        ## hodge_laplacian_rank0
+        return dict()
