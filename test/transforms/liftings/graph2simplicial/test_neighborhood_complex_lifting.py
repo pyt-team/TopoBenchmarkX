@@ -1,6 +1,6 @@
+
 import networkx as nx
 import torch
-from typing import Tuple, Set, List
 from torch_geometric.utils.convert import from_networkx
 
 from modules.data.utils.utils import load_manual_graph
@@ -37,7 +37,7 @@ class TestNeighborhoodComplexLifting:
         self.random_data["x"] = torch.rand((5, 1))
 
 
-    def has_neighbour(self, simplex_points: List[Set]) -> Tuple[bool, Set[int]]:
+    def has_neighbour(self, simplex_points: list[set]) -> tuple[bool, set[int]]:
         """ Verifies that the maximal simplices
             of Data representation of a simplicial complex
             share a neighbour.
@@ -61,10 +61,10 @@ class TestNeighborhoodComplexLifting:
         """
         lifted_data = self.lifting_high.forward(self.random_data)
         # For each set of simplices
-        r = max(int(key.split('_')[-1]) for key in list(lifted_data.keys()) if 'x_idx_' in key)
+        r = max(int(key.split("_")[-1]) for key in list(lifted_data.keys()) if "x_idx_" in key)
         idx_str = f"x_idx_{r}"
 
-        # Go over each (max_dim)-simplex 
+        # Go over each (max_dim)-simplex
         for simplex_points in lifted_data[idx_str]:
             share_neighbour = self.has_neighbour(simplex_points)
             assert share_neighbour, f"The simplex {simplex_points} does not have a common neighbour with all the nodes."
@@ -76,10 +76,10 @@ class TestNeighborhoodComplexLifting:
         """
         lifted_data = self.lifting_high.forward(self.star_data)
         # For each set of simplices
-        r = max(int(key.split('_')[-1]) for key in list(lifted_data.keys()) if 'x_idx_' in key)
+        r = max(int(key.split("_")[-1]) for key in list(lifted_data.keys()) if "x_idx_" in key)
         idx_str = f"x_idx_{r}"
 
-        # Go over each (max_dim)-simplex 
+        # Go over each (max_dim)-simplex
         for simplex_points in lifted_data[idx_str]:
             share_neighbour = self.has_neighbour(simplex_points)
             assert share_neighbour, f"The simplex {simplex_points} does not have a common neighbour with all the nodes."
