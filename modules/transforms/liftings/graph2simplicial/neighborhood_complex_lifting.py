@@ -49,7 +49,6 @@ class NeighborhoodComplexLifting(Graph2SimplicialLifting):
             i: f for i, f in enumerate(data["x"])
         }
 
-
         simplicial_complex.set_simplex_attributes(feature_dict, name="features")
 
         return self._get_lifted_topology(simplicial_complex, graph)
@@ -57,7 +56,8 @@ class NeighborhoodComplexLifting(Graph2SimplicialLifting):
     def _get_lifted_topology(self, simplicial_complex: SimplicialComplex, graph: nx.Graph) -> dict:
         data = super()._get_lifted_topology(simplicial_complex, graph)
 
-        for r in range(simplicial_complex.dim):
+
+        for r in range(simplicial_complex.dim+1):
             data[f"x_idx_{r}"] = torch.tensor(simplicial_complex.skeleton(r))
 
         return data

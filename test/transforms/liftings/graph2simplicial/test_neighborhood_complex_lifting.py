@@ -1,5 +1,6 @@
 import networkx as nx
 import torch
+from typing import Tuple, Set, List
 from torch_geometric.utils.convert import from_networkx
 
 from modules.data.utils.utils import load_manual_graph
@@ -18,51 +19,72 @@ class TestNeighborhoodComplexLifting:
         # Initialize the NeighborhoodComplexLifting class for dim=3
         self.lifting_signed = NeighborhoodComplexLifting(complex_dim=3, signed=True)
         self.lifting_unsigned = NeighborhoodComplexLifting(complex_dim=3, signed=False)
+        self.lifting_high = NeighborhoodComplexLifting(complex_dim=7, signed=False)
 
         # Intialize an empty graph for testing purpouses
         self.empty_graph = nx.empty_graph(10)
         self.empty_data = from_networkx(self.empty_graph)
         self.empty_data["x"] = torch.rand((10, 10))
 
+        # Intialize a start graph for testing
+        self.star_graph = nx.star_graph(5)
+        self.star_data = from_networkx(self.star_graph)
+        self.star_data["x"] = torch.rand((6, 1))
+
         # Intialize a random graph for testing purpouses
-        self.random_graph = nx.fast_gnp_random_graph(10, 0.5)
+        self.random_graph = nx.fast_gnp_random_graph(5, 0.5)
         self.random_data = from_networkx(self.random_graph)
-        self.random_data["x"] = torch.rand((10, 10))
+        self.random_data["x"] = torch.rand((5, 1))
+
+
+    def has_neighbour(self, simplex_points: List[Set]) -> Tuple[bool, Set[int]]:
+        """ Verifies that the maximal simplices
+            of Data representation of a simplicial complex
+            share a neighbour.
+        """
+        for simplex_point_a in simplex_points:
+            for simplex_point_b in simplex_points:
+                # Same point
+                if simplex_point_a == simplex_point_b:
+                    continue
+                # Search all nodes to check if they are c such that a and b share c as a neighbour
+                for node in self.random_graph.nodes:
+                    # They share a neighbour
+                    if self.random_graph.has_edge(simplex_point_a.item(), node) and self.random_graph.has_edge(simplex_point_b.item(), node):
+                        return True
+        return False
 
     def test_lift_topology_random_graph(self):
         """ Verifies that the lifting procedure works on
-        random graphs, that is, checks that the simplices
+        a random graph, that is, checks that the simplices
         generated share a neighbour.
         """
-        lifted_data = self.lifting_unsigned.forward(self.random_data)
+        lifted_data = self.lifting_high.forward(self.random_data)
         # For each set of simplices
-        for r in range(1, self.lifting_unsigned.complex_dim):
-            idx_str = f"x_idx_{r}"
+        r = max(int(key.split('_')[-1]) for key in list(lifted_data.keys()) if 'x_idx_' in key)
+        idx_str = f"x_idx_{r}"
 
-            # Found maximum dimension
-            if idx_str not in lifted_data:
-                break
+        # Go over each (max_dim)-simplex 
+        for simplex_points in lifted_data[idx_str]:
+            share_neighbour = self.has_neighbour(simplex_points)
+            assert share_neighbour, f"The simplex {simplex_points} does not have a common neighbour with all the nodes."
 
-            # Iterate over the composing nodes of each simplex
-            for simplex_points in lifted_data[idx_str]:
-                share_neighbour = True
-                # For each node in the graph
-                for node in self.random_graph.nodes:
-                    # Not checking the nodes themselves
-                    if node in simplex_points:
-                        continue
-                    share_neighbour = True
-                    # For each node in the simplex
-                    for simplex_point in simplex_points:
-                        # If the node does not have a common neighbour
-                        if not self.random_graph.has_edge(node, simplex_point):
-                            share_neighbour = False
-                            break
-                    # There is at least 1 node that has a common neighbour
-                    # with the nodes in the simplex
-                    if share_neighbour:
-                        break
-                assert share_neighbour, f"The simplex {simplex_points} does not have a common neighbour with all the nodes."
+    def test_lift_topology_star_graph(self):
+        """ Verifies that the lifting procedure works on
+        a small star graph, that is, checks that the simplices
+        generated share a neighbour.
+        """
+        lifted_data = self.lifting_high.forward(self.star_data)
+        # For each set of simplices
+        r = max(int(key.split('_')[-1]) for key in list(lifted_data.keys()) if 'x_idx_' in key)
+        idx_str = f"x_idx_{r}"
+
+        # Go over each (max_dim)-simplex 
+        for simplex_points in lifted_data[idx_str]:
+            share_neighbour = self.has_neighbour(simplex_points)
+            assert share_neighbour, f"The simplex {simplex_points} does not have a common neighbour with all the nodes."
+
+
 
     def test_lift_topology_empty_graph(self):
         """ Test the lift_topology method with an empty graph.
