@@ -1,0 +1,11 @@
+data_domain: hypergraph
+data_type: contact
+data_name: ContactPrimarySchool
+data_dir: datasets/${data_domain}/${data_type}
+#data_split_dir: ${oc.env:PROJECT_ROOT}/datasets/data_splits/${data_name}
+
+# Dataset parameters
+num_nodes: 242
+num_hyperedges: 12704
+num_classes: 11
+task: classification
