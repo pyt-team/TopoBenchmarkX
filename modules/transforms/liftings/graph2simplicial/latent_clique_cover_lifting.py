@@ -2,17 +2,94 @@ import networkx as nx
 import numpy as np
 import torch
 import torch_geometric
+from scipy import stats
 from scipy.sparse import csr_matrix
 from scipy.special import gammaln, logsumexp
-from scipy import stats
 from tqdm.auto import tqdm
 
 from modules.transforms.liftings.graph2simplicial.clique_lifting import (
+    Graph2SimplicialLifting,
     SimplicialCliqueLifting,
 )
 
 
-class LatentCliqueCoverSampler:
+class LatentCliqueCoverLifting(Graph2SimplicialLifting):
+    r"""Lifts graphs to cell complexes by identifying the cycles as 2-cells.
+
+    Parameters
+    ----------
+    edge_prob_mean : float = 0.9
+        Mean of the prior distribution of pie ~ Beta
+        where edge_prob_mean must be in (0, 1).
+        When edge_prob_mean is one, the value of edge_prob is fixed and not sampled.
+    edge_prob_var : float = 0.05
+        Uncertainty of the prior distribution of pie ~ Beta(a, b)
+        where edge_prob_var must be in [0, inf). When edge_prob_var is zero,
+        the value of edge_prob is fixed and not sampled. It is require dthat
+        edge_prob_var < edge_prob_mean * (1 - edge_prob_mean). When this is not the case
+        the value of edge_prob_var is set to edge_prob_mean * (1 - edge_prob_mean) - 1e-6.
+    it : int, optional
+        Number of iterations for sampling, by default None.
+    init : str, optional
+        Initialization method for the clique cover matrix, by default "edges".
+    **kwargs : optional
+        Additional arguments for the class.
+    """
+
+    def __init__(
+        self,
+        edge_prob_mean: float = 0.9,
+        edge_prob_var: float = 0.05,
+        it=None,
+        init="edges",
+        **kwargs,
+    ):
+        super().__init__(**kwargs)
+        self.edge_prob_mean = edge_prob_mean
+        min_var = self.edge_prob_mean * (1 - self.edge_prob_mean)
+        self.edge_prob_var = min(edge_prob_var, min_var - 1e-6)
+        self.it = it
+        self.init = init
+
+    def lift_topology(
+        self, data: torch_geometric.data.Data, verbose: bool = False
+    ) -> dict:
+        r"""Finds the cycles of a graph and lifts them to 2-cells.
+
+        Parameters
+        ----------
+        data : torch_geometric.data.Data
+            The input data to be lifted.
+        verbose : bool, optional
+            Whether to display verbose output, by default False.
+
+        Returns
+        -------
+        dict
+            The lifted topology.
+        """
+        G = self._generate_graph_from_data(data)
+        adj = nx.adjacency_matrix(G).toarray()
+
+        mod = LatentCliqueModel(
+            adj,
+            init=self.init,
+            edge_prob_mean=self.edge_prob_mean,
+            edge_prob_var=self.edge_prob_var,
+        )
+        it = self.it if self.it is not None else data.num_edges
+        mod.sample(sample_hypers=True, num_iters=it, do_gibbs=True, verbose=verbose)
+
+        adj = mod.Z.T @ mod.Z
+        adj = np.minimum(adj - np.diag(np.diag(adj)), 1)
+        g = nx.from_numpy_matrix(adj)
+        edges = torch.LongTensor(list(g.edges()), device=data.edge_index.device).T
+        edges = torch.cat([edges, edges.flip(0)], dim=1)
+        new_data = torch_geometric.data.Data(x=data.x, edge_index=edges)
+        return SimplicialCliqueLifting().lift_topology(new_data)
+
+
+class LatentCliqueModel:
     """Latent clique cover model for network data corresponding to the
     Partial Observability Setting of the Random Clique Cover (Williamson & Tec, 2020) paper.
 
@@ -36,8 +113,13 @@ class LatentCliqueCoverSampler:
     ----------
     adj : np.ndarray
         Adjacency matrix of the input graph.
-    pie_params : list[float]
-        Parameters for the prior distribution of pie ~ Beta(pie_params[0], pie_params[1])
+    edge_prob_mean : float
+        Mean of the prior distribution of pie ~ Beta
+        where edge_prob_mean must be in (0, 1]. 
+        When edge_prob_var is one, the value of edge_prob is fixed and not sampled.
+    edge_prob_var : float
+        Uncertainty of the prior distribution of pie ~ Beta(a, b)
+        where edge_prob_var must be in [0, inf). When edge_prob_var > 0, the value of pie is sampled.
     init : str, optional
         Initialization method for the clique cover matrix, by default "edges".
 
@@ -61,18 +143,28 @@ class LatentCliqueCoverSampler:
         Parameter of the SB-iBP taking values in (0, 1).
     c : float
         Parameter of the SB-iBP taking values in (-c, inf).
-    pie : float
-        Probability of an edge being unobserved taking values in (0, 1).
-    
+    edge_prob : float
+        Probability of an edge observation.
+    lamb : float
+        Rate parameter of the Poisson distribution for the number of cliques.
+        It does not influence parameter learning. But is sampled for the 
+        likelihood computation.
 
     **Note**: The values of (K, N) are used interchanged from the paper notation.
     """
 
-    def __init__(self, adj, pie_params: list[float] = [1.0, 1.0], init="edges"):
+    def __init__(
+        self,
+        adj,
+        edge_prob_mean=0.9,
+        edge_prob_var=0.05,
+        init="edges",
+    ):
         self.init = init
         self.adj = adj
         self.num_nodes = adj.shape[0]
-        self.edges = np.array(np.where(self.adj == 1)).T
+        triu_mask = np.triu(np.ones_like(adj), 1)
+        self.edges = np.array(np.where(self.adj * triu_mask == 1)).T
         self.num_edges = len(self.edges)
 
         # Initialize clique cover matrix
@@ -82,20 +174,24 @@ class LatentCliqueCoverSampler:
         self.K = self.Z.shape[0]
 
         # Initialize parameters
-        self.alpha = None
-        self.sigma = None
-        self.c = None
-        self.pie = None
+        self.alpha = 1.0
+        self.sigma = 0.5
+        self.c = 0.5
+        self.edge_prob = edge_prob_mean 
 
         # Parameter prior hyper-parameters
-        # For alpha, sigma, c we use default values since thay are
-        # not very informative and determined mostly by the data
-        self.alpha_params = [1.0, 1.0]
-        self.sigma_params = [1.0, 1.0]
-        self.c_params = [1.0, 1.0]
+        # The priors of alpha, sigma, c and uninformative, so their are set to
+        # a default value governing the prior distribution that has little effect on the posterior
+        self._alpha_params = [1.0, 1.0]
+        self._sigma_params = [1.0, 1.0]
+        self._c_params = [1.0, 1.0]
 
-        # Prior for the number of cliques
-        self.pie_params = pie_params
+        # Prior for the probability of an edge observation which influences
+        # the clique cover matrix. With a lower prob, there will be more latent edges
+        # and therefore larger cliques. The mean, var parameterization is transformed
+        # to the alpha, beta parameterization of the Beta distribution.
+        self._sample_edge_prob = edge_prob_var > 0 or edge_prob_mean < 1
+        self._edge_prob_params = _get_beta_params(edge_prob_mean, edge_prob_var)
 
     def _init_Z(self):
         """Initialize the clique cover matrix Z."""
@@ -112,7 +208,7 @@ class LatentCliqueCoverSampler:
     def sample(
         self,
         num_iters=1000,
-        num_sm=20,
+        num_sm=10,
         sample_hypers=True,
         do_gibbs=False,
         verbose=False,
@@ -244,9 +340,9 @@ class LatentCliqueCoverSampler:
         # Sample alpha
         alpha_prop = self.alpha + step_size * np.random.randn()
         if alpha_prop > 0:
-            lp_ratio = (self.alpha_params[0] - 1) * (
+            lp_ratio = (self._alpha_params[0] - 1) * (
                 np.log(alpha_prop) - np.log(self.alpha)
-            ) + self.alpha_params[1] * (self.alpha - alpha_prop)
+            ) + self._alpha_params[1] * (self.alpha - alpha_prop)
 
             ll_new = self.log_lik(alpha=alpha_prop, alpha_only=True)
             ll_old = self.log_lik(alpha_only=True)
@@ -256,14 +352,14 @@ class LatentCliqueCoverSampler:
                 self.alpha = alpha_prop
 
         # Sample sigma
-        sigma_prop = self.sigma + step_size * np.random.randn()
+        sigma_prop = self.sigma + 0.1 * step_size * np.random.randn()
         if 0 < sigma_prop < 1:
             ll_new = self.log_lik(sigma=sigma_prop)
             ll_old = self.log_lik()
 
-            lp_ratio = (self.sigma_params[0] - 1) * (
+            lp_ratio = (self._sigma_params[0] - 1) * (
                 np.log(sigma_prop) - np.log(self.sigma)
-            ) + (self.sigma_params[1] - 1) * (
+            ) + (self._sigma_params[1] - 1) * (
                 np.log(1 - sigma_prop) - np.log(1 - self.sigma)
             )
             lratio = ll_new - ll_old + lp_ratio
@@ -273,23 +369,26 @@ class LatentCliqueCoverSampler:
                 self.sigma = sigma_prop
 
         # Sample pie
-        pie_prop = self.pie + step_size * np.random.randn()
-        if 0 < pie_prop < 1:
-            ll_new = self.loglikZ(pie=pie_prop)
+        edge_prob_prop = self.edge_prob + 0.1 * step_size * np.random.randn()
+        if self._sample_edge_prob and 0 < edge_prob_prop < 1:
+            ll_new = self.loglikZ(pie=edge_prob_prop)
             ll_old = self.loglikZ()
-            lp_ratio = (self.pie_params[0] - 1) * (
-                np.log(pie_prop) - np.log(self.pie)
-            ) + (self.pie_params[1] - 1) * (np.log(1 - pie_prop) - np.log(1 - self.pie))
+            a = self._edge_prob_params[0]
+            b = self._edge_prob_params[1]
+            # lp ratio comes from a beta distribution
+            lp_ratio = (a - 1) * (
+                np.log(edge_prob_prop) - np.log(self.edge_prob)
+            ) + (b - 1) * (np.log(1 - edge_prob_prop) - np.log(1 - self.edge_prob))
             lratio = ll_new - ll_old + lp_ratio
             r = np.log(np.random.rand())
             if r < lratio:
-                self.pie = pie_prop
+                self.edge_prob = edge_prob_prop
 
         c_prop = self.c + step_size * np.random.randn()
-        if c_prop > -1 * self.sigma:
-            lp_ratio = (self.c_params[0] - 1) * (
+        if c_prop > -self.sigma:
+            lp_ratio = (self._c_params[0] - 1) * (
                 np.log(c_prop) - np.log(self.c)
-            ) + self.c_params[1] * (self.c - c_prop)
+            ) + self._c_params[1] * (self.c - c_prop)
             ll_new = self.log_lik(c=c_prop)
             ll_old = self.log_lik()
             lratio = ll_new - ll_old + lp_ratio
@@ -300,10 +399,9 @@ class LatentCliqueCoverSampler:
         # Sample c
         c_prop = self.c + step_size * np.random.randn()
 
-        # Sample lamb
-        lamb_a = self.lambda_params[0] + self.K
-        lamb_b = self.lambda_params[1] + 1.0
-        self.lamb = np.random.gamma(lamb_a, 1 / lamb_b)
+        # Sample lamb, which is the rate for the number of cliques
+        # in the Poisson distribution. It does not influence parameter learning.
+        self.lamb = np.random.gamma(1 + self.K, 1 / 2)
 
     def gibbs(self):
         """Perform Gibbs sampling step to update Z."""
@@ -371,7 +469,7 @@ class LatentCliqueCoverSampler:
         if Z is None:
             Z = self.Z
         if pie is None:
-            pie = self.pie
+            pie = self.edge_prob
         cic = np.dot(Z.T, Z)
         cic = cic - np.diag(np.diag(cic))
 
@@ -410,11 +508,11 @@ class LatentCliqueCoverSampler:
 
         zero_check = (1 - np.minimum(cic, 1)) * self.adj[node, :]
         if np.sum(zero_check) == 0:
-            p0 = (1 - self.pie) ** cic
+            p0 = (1 - self.edge_prob) ** cic
             p1 = 1 - p0
-            lp = np.sum(np.log(p0[np.where(self.adj[node, :] == 0)])) + np.sum(
-                np.log(p1[np.where(self.adj[node, :] == 1)])
-            )
+            lp0 = np.sum(np.log(1e-3 + p0[np.where(self.adj[node, :] == 0)]))
+            lp1 = np.sum(np.log(1e-3 + p1[np.where(self.adj[node, :] == 1)]))
+            lp = lp0 + lp1
         else:
             lp = -np.inf
         return lp
@@ -601,62 +699,24 @@ class LatentCliqueCoverSampler:
                     self.K -= 1
 
 
-class LatentCliqueCoverLifting(SimplicialCliqueLifting):
-    r"""Lifts graphs to cell complexes by identifying the cycles as 2-cells.
+def _get_beta_params(mean, var):
+    """Compute the parameters of a Beta distribution given the mean and variance.
 
     Parameters
     ----------
-    pie : float, optional
-        Parameter for the model, by default 0.8.
-    it : int, optional
-        Number of iterations for sampling, by default None.
-    init : str, optional
-        Initialization method for the clique cover matrix, by default "edges".
-    max_cell_length : int, optional
-        The maximum length of the cycles to be lifted. Default is None.
-    **kwargs : optional
-        Additional arguments for the class.
+    mean : float
+        Mean of the Beta distribution.
+    var : float
+        Variance of the Beta distribution.
+
+    Returns
+    -------
+    tuple
+        Tuple of the Beta distribution parameters.
     """
-
-    def __init__(self, pie: float = 0.8, it=None, init="edges", **kwargs):
-        super().__init__(**kwargs)
-        self.pie = pie
-        self.it = it
-        self.init = init
-
-    def lift_topology(
-        self, data: torch_geometric.data.Data, verbose: bool = False
-    ) -> dict:
-        r"""Finds the cycles of a graph and lifts them to 2-cells.
-
-        Parameters
-        ----------
-        data : torch_geometric.data.Data
-            The input data to be lifted.
-        verbose : bool, optional
-            Whether to display verbose output, by default False.
-
-        Returns
-        -------
-        dict
-            The lifted topology.
-        """
-        G = self._generate_graph_from_data(data)
-        adj = nx.adjacency_matrix(G).toarray()
-        pie_mean = 0.95
-        pie_confidence = 10
-        pie_params = [pie_mean * pie_confidence, (1 - pie_mean) * pie_confidence]
-        mod = LatentCliqueCoverSampler(adj, init=self.init, pie_params=pie_params)
-        it = self.it if self.it is not None else data.num_nodes
-        mod.sample(sample_hypers=True, num_iters=it, do_gibbs=True, verbose=verbose)
-
-        adj = mod.Z.T @ mod.Z
-        adj = np.minimum(adj - np.diag(np.diag(adj)), 1)
-        g = nx.from_numpy_matrix(adj)
-        edges = torch.LongTensor(list(g.edges()), device=data.edge_index.device).T
-        edges = torch.cat([edges, edges.flip(0)], dim=1)
-        new_data = torch_geometric.data.Data(x=data.x, edge_index=edges)
-        return super().lift_topology(new_data)
+    a = mean * (mean * (1 - mean) / var - 1)
+    b = (1 - mean) * (mean * (1 - mean) / var - 1)
+    return a, b
 
 
 def sample_from_ibp(K, alpha, sigma, c):
@@ -673,6 +733,8 @@ def sample_from_ibp(K, alpha, sigma, c):
         Sigma parameter of the IBP.
     c : float
         c parameter of the IBP.
+    pie : float
+        Probability of an edge obervation. 1 - pie is the probability that an edge is unobserved.
 
     Returns
     -------
@@ -720,14 +782,19 @@ def sample_from_ibp(K, alpha, sigma, c):
 
 
 if __name__ == "__main__":
-    K, alpha, sigma, c = 30, 3, 0.7, 5
+    K, alpha, sigma, c, pie = 30, 3, 0.7, 5, 1.0
     Z = sample_from_ibp(K, alpha, sigma, c)
 
-    adj = Z.transpose() @ Z
-    g = nx.from_scipy_sparse_matrix(adj)
-    for n in g.nodes():
-        g.remove_edge(n, n)
+    cic = (Z.transpose() @ Z).toarray()
+    adj = np.minimum(cic - np.diag(np.diag(cic)), 1)
 
+    # delete edges with prob 1 - exp(pi^)
+    prob = np.exp(-(1 - pie)**2)
+    triu_mask = np.triu(np.ones_like(adj), 1)
+    adj = np.random.binomial(1, prob, adj.shape) * adj * triu_mask
+    adj = adj + adj.T
+
+    g = nx.from_numpy_matrix(adj)
     print("Number of edges:", g.number_of_edges())
     print("Number of nodes:", g.number_of_nodes())
 
@@ -736,5 +803,5 @@ if __name__ == "__main__":
     data.x = torch.ones(data.num_nodes, 1)
 
     # Lift the topology to a cell complex
-    lifting = LatentCliqueCoverLifting(pie=0.8, init="edges")
+    lifting = LatentCliqueCoverLifting(edge_prob_mean=0.99)
     complex = lifting.lift_topology(data, verbose=True)
