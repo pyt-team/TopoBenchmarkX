@@ -13,7 +13,7 @@ from modules.transforms.liftings.graph2simplicial.clique_lifting import (
 )
 
 
-class LatentCliqueCoverLifting(Graph2SimplicialLifting):
+class LatentCliqueLifting(Graph2SimplicialLifting):
     r"""Lifts graphs to cell complexes by identifying the cycles as 2-cells.
 
     Parameters
@@ -71,7 +71,7 @@ class LatentCliqueCoverLifting(Graph2SimplicialLifting):
         G = self._generate_graph_from_data(data)
         adj = nx.adjacency_matrix(G).toarray()
 
-        mod = LatentCliqueModel(
+        mod = _LatentCliqueModel(
             adj,
             init=self.init,
             edge_prob_mean=self.edge_prob_mean,
@@ -89,7 +89,7 @@ class LatentCliqueCoverLifting(Graph2SimplicialLifting):
         return SimplicialCliqueLifting().lift_topology(new_data)
 
 
-class LatentCliqueModel:
+class _LatentCliqueModel:
     """Latent clique cover model for network data corresponding to the
     Partial Observability Setting of the Random Clique Cover (Williamson & Tec, 2020) paper.
 
@@ -719,7 +719,7 @@ def _get_beta_params(mean, var):
     return a, b
 
 
-def sample_from_ibp(K, alpha, sigma, c):
+def _sample_from_ibp(K, alpha, sigma, c):
     """
     Auxiliary function to sample from the Indian Buffet Process.
 
@@ -783,7 +783,7 @@ def sample_from_ibp(K, alpha, sigma, c):
 
 if __name__ == "__main__":
     K, alpha, sigma, c, pie = 30, 3, 0.7, 5, 1.0
-    Z = sample_from_ibp(K, alpha, sigma, c)
+    Z = _sample_from_ibp(K, alpha, sigma, c)
 
     cic = (Z.transpose() @ Z).toarray()
     adj = np.minimum(cic - np.diag(np.diag(cic)), 1)
@@ -803,5 +803,5 @@ if __name__ == "__main__":
     data.x = torch.ones(data.num_nodes, 1)
 
     # Lift the topology to a cell complex
-    lifting = LatentCliqueCoverLifting(edge_prob_mean=0.99)
+    lifting = LatentCliqueLifting(edge_prob_mean=0.99)
     complex = lifting.lift_topology(data, verbose=True)
