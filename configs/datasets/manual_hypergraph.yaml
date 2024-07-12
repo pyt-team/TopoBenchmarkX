@@ -3,6 +3,6 @@ data_type: toy_hypergraph
 data_name: manual_hg
 data_dir: datasets/${data_domain}/${data_type}
 
-num_nodes: 8
-num_hyperedges: 16
+num_nodes: 12
+num_hyperedges: 24
 max_dim: 2
