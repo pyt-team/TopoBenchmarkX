@@ -13,15 +13,13 @@ from modules.transforms.liftings.hypergraph2simplicial.heat_lifting import (
 
 ## Ensure the cofacet relations hold; this should hold for all simplices with base weights / "topological weight"
 def cofacet_constraint(
-    S: dict, d: int = None, relation: str = ">=", verbose: bool = False
+    S: dict, d: int = None, relation: str = ">=", verbose: bool = False  # noqa: RUF013
 ) -> bool:
     assert isinstance(S, dict), "Input mut be a simplicial weight map"
     relation_holds: bool = True
-    for s in S.keys():
+    for s in S:
         s_weight = S[s]
-        s_cofacets = [
-            c for c in S.keys() if len(c) == len(s) + 1 and np.all(np.isin(s, c))
-        ]
+        s_cofacets = [c for c in S if len(c) == len(s) + 1 and np.all(np.isin(s, c))]
         c_weight = np.sum([S[c] for c in s_cofacets])
         relation_holds &= (
             eval(f"s_weight {relation} c_weight")

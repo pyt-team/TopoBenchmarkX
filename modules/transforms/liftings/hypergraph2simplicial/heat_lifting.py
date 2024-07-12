@@ -1,10 +1,10 @@
 import itertools as it
 from array import array
 from collections import Counter, defaultdict
+from collections.abc import Generator, Sized
 from functools import cache, reduce
 from math import comb, factorial
 from operator import or_
-from typing import Generator, Sized
 
 import numpy as np
 import toponetx as tnx
@@ -46,17 +46,13 @@ def base_map(dim: int) -> dict:
                 for d, k in enumerate(range(dim + 1))
             }
         )
-    else:
-        typ_wghts = Counter(
-            {
-                d: 1.0 / (factorial(dim) / factorial(dim - k))
-                for d, k in enumerate(range(9))
-            }
-        )
-        near_zero = Counter(
-            {d: np.finfo(np.float64).eps for d, k in enumerate(range(9, dim + 1))}
-        )
-        return typ_wghts + near_zero
+    typ_wghts = Counter(
+        {d: 1.0 / (factorial(dim) / factorial(dim - k)) for d, k in enumerate(range(9))}
+    )
+    near_zero = Counter(
+        {d: np.finfo(np.float64).eps for d, k in enumerate(range(9, dim + 1))}
+    )
+    return typ_wghts + near_zero
 
 
 def weighted_simplex(simplex: tuple) -> dict:
@@ -144,8 +140,6 @@ def downward_closure(H: list, d: int = 1, coeffs: bool = False):
             S.update(d_simplices)
         S = np.array(list(S), dtype=(int, (d + 1,)))
         S.sort(axis=1)
-        # S = S[np.lexsort(np.rot90(S))]
-        return S  # noqa: RET505
     else:
         from hirola import HashTable
 
@@ -162,17 +156,16 @@ def downward_closure(H: list, d: int = 1, coeffs: bool = False):
             card_memberships[len(he) - 1].extend(s_keys.flatten())
 
         ## Construct the coauthorship coefficients
-        from collections import Counter
-
-        I, J, X = array("I"), array("I"), array("I")
+        R, C, X = array("I"), array("I"), array("I")
         for j, members in enumerate(card_memberships):
             cc = Counter(members)
-            I.extend(cc.keys())
-            J.extend(np.full(len(cc), j))
+            R.extend(cc.keys())
+            C.extend(np.full(len(cc), j))
             X.extend(cc.values())
-        coeffs = coo_array((X, (I, J)), shape=(len(S), len(card_memberships)))
+        coeffs = coo_array((X, (R, C)), shape=(len(S), len(card_memberships)))
         coeffs.eliminate_zeros()
-        return S.keys.reshape(len(S.keys), d + 1), coeffs  # noqa: RET505
+        S = S.keys.reshape(len(S.keys), d + 1)
+    return S if not coeffs else (S, coeffs)
 
 
 def normalize_hg(H: list):
@@ -197,13 +190,13 @@ def top_weights(simplices: np.ndarray, coeffs: sparray, normalize: bool = False)
     if normalize:
         c, d = 1.0 / factorial(N - 1), N - 1
         _coeff_weights = c * np.array(
-            [p / comb(a, d) for p, a in zip(coeffs.data, coeffs.col)]
+            [p / comb(a, d) for p, a in zip(coeffs.data, coeffs.col, strict=True)]
         )
         np.add.at(topo_weights, coeffs.row, _coeff_weights)
     else:
         base_weights = np.array([base_map(d)[N - 1] for d in range(coeffs.shape[1])])
         np.add.at(topo_weights, coeffs.row, coeffs.data * base_weights[coeffs.col])
-    return Counter(dict(zip(map(tuple, simplices), topo_weights)))
+    return Counter(dict(zip(map(tuple, simplices), topo_weights, strict=True)))
 
 
 def vertex_counts(H: list) -> np.ndarray:
@@ -243,10 +236,10 @@ class HypergraphHeatLifting(Hypergraph2SimplicialLifting):
         print("Lifting to weighted simplicial complex")
 
         ## Convert incidence to simple list of hyperedges
-        I, J = data.incidence_hyperedges.coalesce().indices().detach().numpy()
-        col_sort = np.argsort(J)
-        I, J = I[col_sort], J[col_sort]
-        hyperedges = np.split(I, np.cumsum(np.unique(J, return_counts=True)[1])[:-1])
+        R, C = data.incidence_hyperedges.coalesce().indices().detach().numpy()
+        col_sort = np.argsort(C)
+        R, C = R[col_sort], C[col_sort]
+        hyperedges = np.split(R, np.cumsum(np.unique(C, return_counts=True)[1])[:-1])
         hyperedges = normalize_hg(hyperedges)
 
         ## Compute the simplex -> topological weight map using the downward closure of the hyperedges
@@ -267,11 +260,9 @@ class HypergraphHeatLifting(Hypergraph2SimplicialLifting):
                 D.nonzero(), D.data, D.shape
             )
             lifted_topology[f"weights_{d}"] = torch.tensor(
-                np.array([SC_map[s] for s in CI.keys()])
+                np.array([SC_map[s] for s in CI])
             )
             lifted_topology[f"x_{d}"] = torch.atleast_2d(
                 lifted_topology[f"weights_{d}"]
             )
-        # print(lifted_topology)
-        sc_data = torch_geometric.data.Data(**lifted_topology)
-        return sc_data
+        return torch_geometric.data.Data(**lifted_topology)

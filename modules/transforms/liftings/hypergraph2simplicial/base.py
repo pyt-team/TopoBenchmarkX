@@ -1,8 +1,3 @@
-import networkx as nx
-import torch
-from toponetx.classes import ColoredHyperGraph, SimplicialComplex
-
-# from modules.data.utils.utils import get_complex_connectivity
 from modules.transforms.liftings.lifting import HypergraphLifting
 
 
