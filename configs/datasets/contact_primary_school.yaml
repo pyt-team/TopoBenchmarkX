@@ -8,5 +8,5 @@ data_dir: datasets/${data_domain}/${data_type}
 num_nodes: 242
 num_hyperedges: 12704
 num_classes: 11
-max_dim: 1 
+max_dim: 1
 task: classification

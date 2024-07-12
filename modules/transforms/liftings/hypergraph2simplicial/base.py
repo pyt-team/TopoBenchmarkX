@@ -1,9 +1,10 @@
 import networkx as nx
 import torch
-from toponetx.classes import SimplicialComplex, ColoredHyperGraph
+from toponetx.classes import ColoredHyperGraph, SimplicialComplex
 
 # from modules.data.utils.utils import get_complex_connectivity
 from modules.transforms.liftings.lifting import HypergraphLifting
+
 
 class Hypergraph2SimplicialLifting(HypergraphLifting):
     r"""Abstract class for lifting hyper graphs to simplicial complexes.
