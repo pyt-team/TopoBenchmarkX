@@ -1,0 +1,8 @@
+data_domain: hypergraph
+data_type: toy_hypergraph
+data_name: manual_hg
+data_dir: datasets/${data_domain}/${data_type}
+
+num_nodes: 8
+num_hyperedges: 16
+max_dim: 2
