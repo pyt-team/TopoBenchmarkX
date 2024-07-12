@@ -133,6 +133,8 @@ def downward_closure(H: list, d: int = 1, coeffs: bool = False):
     """
     assert isinstance(d, int), "simplex dimension must be integral"
     H = normalize_hg(H)
+
+    ## If coeffs = False, just do the restriction operation
     if not coeffs:
         S = set()  # about 15x faster than sortedset
         for he in H:
@@ -140,32 +142,33 @@ def downward_closure(H: list, d: int = 1, coeffs: bool = False):
             S.update(d_simplices)
         S = np.array(list(S), dtype=(int, (d + 1,)))
         S.sort(axis=1)
-    else:
-        from hirola import HashTable
+        return S
 
-        ## Extract the lengths of the hyperedges and how many d-simplices we may need
-        H_sizes = np.array([len(he) for he in H])
-        MAX_HT_SIZE = int(np.sum([comb(sz, d + 1) for sz in H_sizes]))
+    ## Extract the lengths of the hyperedges and how many d-simplices we may need
+    from hirola import HashTable
 
-        ## Allocate the two output containers
-        S = HashTable(int(MAX_HT_SIZE * 1.20) + 8, dtype=(int, d + 1))
-        card_memberships = [array("I") for _ in range(np.max(H_sizes))]
-        for he in (he for he in H if len(he) > d):
-            d_simplices = he[_combs(len(he), d + 1)].T
-            s_keys = S.add(d_simplices)
-            card_memberships[len(he) - 1].extend(s_keys.flatten())
+    H_sizes = np.array([len(he) for he in H])
+    MAX_HT_SIZE = int(np.sum([comb(sz, d + 1) for sz in H_sizes]))
 
-        ## Construct the coauthorship coefficients
-        R, C, X = array("I"), array("I"), array("I")
-        for j, members in enumerate(card_memberships):
-            cc = Counter(members)
-            R.extend(cc.keys())
-            C.extend(np.full(len(cc), j))
-            X.extend(cc.values())
-        coeffs = coo_array((X, (R, C)), shape=(len(S), len(card_memberships)))
-        coeffs.eliminate_zeros()
-        S = S.keys.reshape(len(S.keys), d + 1)
-    return S if not coeffs else (S, coeffs)
+    ## Allocate the two output containers
+    S = HashTable(int(MAX_HT_SIZE * 1.20) + 8, dtype=(int, d + 1))
+    card_memberships = [array("I") for _ in range(np.max(H_sizes))]
+    for he in (he for he in H if len(he) > d):
+        d_simplices = he[_combs(len(he), d + 1)].T
+        s_keys = S.add(d_simplices)
+        card_memberships[len(he) - 1].extend(s_keys.flatten())
+
+    ## Construct the coauthorship coefficients
+    R, C, X = array("I"), array("I"), array("I")
+    for j, members in enumerate(card_memberships):
+        cc = Counter(members)
+        R.extend(cc.keys())
+        C.extend(np.full(len(cc), j))
+        X.extend(cc.values())
+    coeffs = coo_array((X, (R, C)), shape=(len(S), len(card_memberships)))
+    coeffs.eliminate_zeros()
+    S = S.keys.reshape(len(S.keys), d + 1)
+    return S, coeffs
 
 
 def normalize_hg(H: list):
