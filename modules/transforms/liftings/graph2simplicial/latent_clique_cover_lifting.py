@@ -3,8 +3,9 @@ import numpy as np
 import torch
 import torch_geometric
 from scipy.sparse import csr_matrix
-from scipy.special import gamma, gammaln
-
+from scipy.special import gammaln, logsumexp
+from scipy import stats
+from tqdm.auto import tqdm
 
 from modules.transforms.liftings.graph2simplicial.clique_lifting import (
     SimplicialCliqueLifting,
@@ -13,101 +14,234 @@ from modules.transforms.liftings.graph2simplicial.clique_lifting import (
 
 class LatentCliqueCoverSampler:
     """Latent clique cover model for network data corresponding to the
-    Partial Observability Setting of the Random Clique Cover paper:
-    http://proceedings.mlr.press/v115/williamson20a/williamson20a.pdf
+    Partial Observability Setting of the Random Clique Cover (Williamson & Tec, 2020) paper.
 
+    Williamson & Tec (2020). "Random clique covers for graphs with local density and global sparsity". UAI 2020.
+    http://proceedings.mlr.press/v115/williamson20a/williamson20a.pdf
+    The model is based on the Stable Beta-Indian Buffet Process (SB-IBP). See Teh and Gorur (2010),
+    "Indian Buffet Processes with Power-Law Behavior", NIPS 2010 for additional reference.
+
+    The model depends on four parameters: alpha, sigma, c, and pie. The parameters
+    alpha, sigma and c arepart of the SB-IBP and are described in Williamson & Tec (2020) and
+    Teh & Gorur (2010) with the same names. The parameter pie is was introduced by Williamson & Tec (2020)
+    and is a parameter for the model that determines the prior probability that an edge is unobserved.
+
+    The following properties of a Random Clique Cover model are useful to interpret the
+    parameters alpha, c, and sigma.
+
+    1. The number of cliques grows as (alpha/sigma) Gamma(1 + c)/Gamma(c + sigma)
+
+
+    Parameters
+    ----------
+    adj : np.ndarray
+        Adjacency matrix of the input graph.
+    pie_params : list[float]
+        Parameters for the prior distribution of pie ~ Beta(pie_params[0], pie_params[1])
+    init : str, optional
+        Initialization method for the clique cover matrix, by default "edges".
+
+    Attributes
+    ----------
+    adj : np.ndarray
+        Adjacency matrix of the input graph of shape (num_nodes, num_nodes).
+    num_nodes : int
+        Number of nodes in the graph.
+    edges : np.ndarray of shape (num_edges, 2)
+        Edges of the graph.
+    num_edges : int
+        Number of edges in the graph.
+    Z : np.ndarray of shape (num_cliques, num_nodes)
+        Clique cover matrix such that Zkj = 1 if node j is in clique k.
+    K : int
+        Number of cliques.
+    alpha : float
+        Parameter of the SB-iBP taking values in (0, inf).
+    sigma : float
+        Parameter of the SB-iBP taking values in (0, 1).
+    c : float
+        Parameter of the SB-iBP taking values in (-c, inf).
+    pie : float
+        Probability of an edge being unobserved taking values in (0, 1).
+    
+
+    **Note**: The values of (K, N) are used interchanged from the paper notation.
     """
 
-    def __init__(self, network, links, pie, init="links"):
-        self.alpha = 1
-        self.sigma = 0.5
-        self.lamb = 1000
-        self.pie = pie
+    def __init__(self, adj, pie_params: list[float] = [1.0, 1.0], init="edges"):
+        self.init = init
+        self.adj = adj
+        self.num_nodes = adj.shape[0]
+        self.edges = np.array(np.where(self.adj == 1)).T
+        self.num_edges = len(self.edges)
 
-        self.network = network - np.diag(np.diag(network))
-        self.links = links
-        self.num_nodes = network.shape[0]
-        self.num_links = len(links)
+        # Initialize clique cover matrix
+        self._init_Z()
 
-        # initialize Z to one single
-        if init == "links":
-            self.Z = np.zeros((self.num_links, self.num_nodes))
-            for i in range(self.num_links):
-                self.Z[i, self.links[i][0]] = 1
-                self.Z[i, self.links[i][1]] = 1
-        elif init == "single":
-            self.Z = np.ones((1, self.num_nodes))
-
-        # current number of clusters
+        # Current number of clusters
         self.K = self.Z.shape[0]
 
-        # prior parameters
+        # Initialize parameters
+        self.alpha = None
+        self.sigma = None
+        self.c = None
+        self.pie = None
+
+        # Parameter prior hyper-parameters
+        # For alpha, sigma, c we use default values since thay are
+        # not very informative and determined mostly by the data
         self.alpha_params = [1.0, 1.0]
         self.sigma_params = [1.0, 1.0]
-        self.pie_params = [1.0, 1.0]
+        self.c_params = [1.0, 1.0]
 
-    def set_hyperpriors(self, alpha_params=None, sigma_params=None, pie_params=None):
-        if alpha_params is not None:
-            self.alpha_params = alpha_params
-        if sigma_params is not None:
-            self.sigma_params = sigma_params
-        if pie_params is not None:
-            self.pie_params = pie_params
+        # Prior for the number of cliques
+        self.pie_params = pie_params
+
+    def _init_Z(self):
+        """Initialize the clique cover matrix Z."""
+        if self.init == "edges":
+            self.Z = np.zeros((self.num_edges, self.num_nodes), dtype=int)
+            for i in range(self.num_edges):
+                self.Z[i, self.edges[i][0]] = 1
+                self.Z[i, self.edges[i][1]] = 1
+            self.lamb = self.num_edges
+        elif self.init == "single":
+            self.Z = np.ones((1, self.num_nodes), dtype=int)
+            self.lamb = 1
 
     def sample(
         self,
         num_iters=1000,
-        num_sm=10,
-        dot_every=100,
+        num_sm=20,
         sample_hypers=True,
-        do_gibbs=True,
+        do_gibbs=False,
         verbose=False,
     ):
-        # Gibbs seems to matter here
-        for iter in range(num_iters):
-            if do_gibbs:
-                self.gibbs()
-                if verbose and iter % dot_every == 0:
-                    print("iter ", iter, ", gibbs done.")
+        """Sample from the model.
 
+        Parameters
+        ----------
+        num_iters : int, optional
+            Number of iterations, by default 1000.
+        num_sm : int, optional
+            Number of split-merge steps, by default 20.
+        sample_hypers : bool, optional
+            Whether to sample hyperparameters, by default True.
+        do_gibbs : bool, optional
+            Whether to perform Gibbs sampling, by default False.
+        verbose : bool, optional
+            Whether to display a progress bar, by default False.
+        """
+        pbar = tqdm(
+            range(num_iters),
+            desc=f"#cliques={self.K}",
+            leave=False,
+            disable=not verbose,
+        )
+        for _ in pbar:
             if sample_hypers:
                 self.sample_hypers()
-                if verbose and iter % dot_every == 0:
-                    print("iter ", iter, ", sample_hypers done.")
+
+            if do_gibbs:
+                self.gibbs()
 
             for _ in range(num_sm):
                 self.splitmerge()
-                if verbose and iter % dot_every == 0:
-                    print("iter ", iter, ", splitmerge done.")
 
-            if iter % dot_every == 0:
-                print("iter ", iter, ", K=", self.K)
+            pbar.set_description(f"#cliques={self.K}")
 
-    def log_lik(self, sigma=None, alpha=None, alpha_only=False):
-        # same as full
-        if sigma is None:
-            sigma = self.sigma
-        if alpha is None:
-            alpha = self.alpha
-        ll = self.num_nodes * np.log(alpha)
-        if alpha_only is False:
-            ll += self.num_nodes * (np.log(1 - sigma) - gammaln(self.K + 1 - sigma))
-        mk = np.sum(self.Z, 0)
+    def log_lik(
+        self, alpha=None, sigma=None, c=None, alpha_only=False, include_K=False
+    ):
+        """Efficient implementation of the Stable Beta-Indian Buffet Process likelihood.
 
-        c1 = gamma(2 - sigma) * alpha
-        for clique in range(1, self.K + 1):
-            log_gamma_ratio = gammaln(clique) - gammaln(clique + 1 - sigma)
-            ll -= c1 * np.exp(log_gamma_ratio)
+        The likelihood is computed as:
 
-        if alpha_only is False:
-            for node in range(self.num_nodes):
-                ll += gammaln(mk[node] - sigma) + gammaln(self.K - mk[node] + 1)
+        P(Z1,...,ZK) = alpha^N * exp( - alpha * A * B) * C * D^N
+                   A = sum_k=1^K Gam(k - 1 + c + sigma) / Gam(k + c)
+                   B = Gam(1 + c) / Gam(c + sigma)
+                   C = prod_i=1^N Gam(mi - sigma) * Gam(N - mi + c + sigma)
+                   D = Gam(1 + c) / Gam(c + sigma) / Gam(1 - sigma) / Gam(n + c)
+
+        where K is the number of cliques, N is the number of nodes, and mi is the number of nodes in clique i.
+
+        Or, equivalently:
+
+        logP(Z1,...,ZK) = N * log(alpha) - alpha * A * B + logC + N * logD
+                   A = as before
+                   B = as before
+                logC = sum_i=1^N log(Gam(mi - sigma)) + log(Gam(N - mi + c + sigma)
+                logD = log(Gam(1 + c)) - log(Gam(c + sigma)) - log(Gam(1 - sigma)) - log(Gam(n + c))
+
+        See Eq. 10 in Teh and Gorur (2010), "Indian Buffet Processes with Power-Law Behavior,
+        Advances in Neural Information Processing Systems 23" for details.
+
+        Parameters
+        ----------
+        alpha : float, optional
+            Alpha parameter, by default None.
+        sigma : float, optional
+            Sigma parameter, by default None.
+        c : float, optional
+            c parameter, by default None.
+        alpha_only : bool, optional
+            Whether to compute likelihood with alpha only, by default False.
+        include_K : bool, optional
+            Whether to include the probability of the number of cliques, by default False.
+
+        Returns
+        -------
+        float
+            Log-likelihood value.
+        """
+        alpha = alpha if alpha is not None else self.alpha
+        sigma = sigma if sigma is not None else self.sigma
+        c = c if c is not None else self.c
+
+        # Number of nodes and number of cliques
+        N = self.num_nodes
+        K = self.K
+
+        # Compute A
+        k_seq = np.arange(1, K + 1)
+        A_terms = gammaln(k_seq - 1 + c + sigma) - gammaln(k_seq + c)
+        A = np.exp(np.clip(A_terms, -20, 20)).sum()
+
+        # Compute B
+        B = gammaln(1 + c) - gammaln(c + sigma)
+
+        # Compute first part of likelihood involving alpha
+        ll = N * np.log(alpha) - alpha * A * B
+        if alpha_only:
+            return ll
+
+        # Compute logC
+        cliques_per_node = np.sum(self.Z, 0)
+        logC = (
+            gammaln(cliques_per_node - sigma).sum()
+            + gammaln(K - cliques_per_node + c + sigma).sum()
+        )
+
+        # Compute logD
+        logD = gammaln(1 + c) - gammaln(c + sigma) - gammaln(1 - sigma) - gammaln(N + c)
+
+        # Compute the rest of the likelihood
+        ll = ll + logC + N * logD
+
+        if include_K:
+            ll = ll + stats.poisson.logpmf(K, self.lamb)
 
         return ll
 
-    def sample_hypers(self, step_size=0.01):
-        # same as full, but with sampling pie added in
-        # mk = np.sum(self.Z,0)
+    def sample_hypers(self, step_size=0.1):
+        """Sample hyperparameters using Metropolis-Hastings updates.
+
+        Parameters
+        ----------
+        step_size : float, optional
+            Step size for the proposal distribution, by default 0.01.
+        """
+        # Sample alpha
         alpha_prop = self.alpha + step_size * np.random.randn()
         if alpha_prop > 0:
             lp_ratio = (self.alpha_params[0] - 1) * (
@@ -120,40 +254,59 @@ class LatentCliqueCoverSampler:
             r = np.log(np.random.rand())
             if r < lratio:
                 self.alpha = alpha_prop
+
+        # Sample sigma
         sigma_prop = self.sigma + step_size * np.random.randn()
-        if sigma_prop > 0:
-            if sigma_prop < 1:
-                ll_new = self.log_lik(sigma=sigma_prop)
-                ll_old = self.log_lik()
+        if 0 < sigma_prop < 1:
+            ll_new = self.log_lik(sigma=sigma_prop)
+            ll_old = self.log_lik()
 
-                lp_ratio = (self.sigma_params[0] - 1) * (
-                    np.log(sigma_prop) - np.log(self.sigma)
-                ) + (self.sigma_params[1] - 1) * (
-                    np.log(1 - sigma_prop) - np.log(1 - self.sigma)
-                )
-                lratio = ll_new - ll_old + lp_ratio
-                r = np.log(np.random.rand())
+            lp_ratio = (self.sigma_params[0] - 1) * (
+                np.log(sigma_prop) - np.log(self.sigma)
+            ) + (self.sigma_params[1] - 1) * (
+                np.log(1 - sigma_prop) - np.log(1 - self.sigma)
+            )
+            lratio = ll_new - ll_old + lp_ratio
+            r = np.log(np.random.rand())
 
-                if r < lratio:
-                    self.sigma = sigma_prop
+            if r < lratio:
+                self.sigma = sigma_prop
 
+        # Sample pie
         pie_prop = self.pie + step_size * np.random.randn()
-        if pie_prop > 0:
-            if pie_prop < 1:
-                ll_new = self.loglikZ(pie=pie_prop)
-                ll_old = self.loglikZ()
-                lp_ratio = (self.pie_params[0] - 1) * (
-                    np.log(pie_prop) - np.log(self.pie)
-                ) + (self.pie_params[1] - 1) * (
-                    np.log(1 - pie_prop) - np.log(1 - self.pie)
-                )
-                lratio = ll_new - ll_old + lp_ratio
-                r = np.log(np.random.rand())
-                if r < lratio:
-                    self.pie = pie_prop
+        if 0 < pie_prop < 1:
+            ll_new = self.loglikZ(pie=pie_prop)
+            ll_old = self.loglikZ()
+            lp_ratio = (self.pie_params[0] - 1) * (
+                np.log(pie_prop) - np.log(self.pie)
+            ) + (self.pie_params[1] - 1) * (np.log(1 - pie_prop) - np.log(1 - self.pie))
+            lratio = ll_new - ll_old + lp_ratio
+            r = np.log(np.random.rand())
+            if r < lratio:
+                self.pie = pie_prop
+
+        c_prop = self.c + step_size * np.random.randn()
+        if c_prop > -1 * self.sigma:
+            lp_ratio = (self.c_params[0] - 1) * (
+                np.log(c_prop) - np.log(self.c)
+            ) + self.c_params[1] * (self.c - c_prop)
+            ll_new = self.log_lik(c=c_prop)
+            ll_old = self.log_lik()
+            lratio = ll_new - ll_old + lp_ratio
+            r = np.log(np.random.rand())
+            if r < lratio:
+                self.c = c_prop
+
+        # Sample c
+        c_prop = self.c + step_size * np.random.randn()
+
+        # Sample lamb
+        lamb_a = self.lambda_params[0] + self.K
+        lamb_b = self.lambda_params[1] + 1.0
+        self.lamb = np.random.gamma(lamb_a, 1 / lamb_b)
 
     def gibbs(self):
-        # empty_cliques = []
+        """Perform Gibbs sampling step to update Z."""
         mk = np.sum(self.Z, 0)
         for node in range(self.num_nodes):
             for clique in range(self.K):
@@ -162,25 +315,22 @@ class LatentCliqueCoverSampler:
                     ll_0 = self.loglikZn(node)
                     self.Z[clique, node] = 1
                     if not np.isinf(ll_0):
-
                         ll_1 = self.loglikZn(node)
                         mk[node] -= 1
                         if mk[node] == 0:
                             continue
-                            raise ValueError("empty clique")
-                            # pdb.set_trace() #shouldn't be possible, because we should break the ll check
-                        # if it doesn't affect the network... sample from the prior
+
                         prior0 = (self.K - mk[node]) / (self.K - self.sigma)
-
                         prior1 = 1 - prior0
+                        if prior0 <= 0 or prior1 <= 0:
+                            raise ValueError("prior is negative")
 
-                        lp0 = np.log(prior0) + ll_0
-                        lp1 = np.log(prior1) + ll_1
-                        lp0 = lp0 - np.logaddexp(lp0, lp1)
+                        lp0 = np.log(prior0 + 1e-3) + ll_0
+                        lp1 = np.log(prior1 + 1e-3) + ll_1
+                        lp0 = lp0 - logsumexp([lp0, lp1])
                         r = np.log(np.random.rand())
                         if r < lp0:
                             self.Z[clique, node] = 0
-
                         else:
                             mk[node] += 1
                 else:
@@ -190,113 +340,136 @@ class LatentCliqueCoverSampler:
                     if not np.isinf(ll_1):
                         ll_0 = self.loglikZn(node)
 
-                        # if it doesn't affect the network... sample from the prior
+                        if mk[node] == 0:
+                            continue
+
                         prior0 = (self.K - mk[node]) / (self.K - self.sigma)
-
                         prior1 = 1 - prior0
-
-                        lp0 = np.log(prior0) + ll_0
-                        lp1 = np.log(prior1) + ll_1
-                        lp1 = lp1 - np.logaddexp(lp0, lp1)
+                        lp0 = np.log(prior0 + 1e-3) + ll_0
+                        lp1 = np.log(prior1 + 1e-3) + ll_1
+                        lp1 = lp1 - logsumexp([lp0, lp1])
                         r = np.log(np.random.rand())
                         if r < lp1:
                             self.Z[clique, node] = 1
                             mk[node] += 1
 
     def loglikZ(self, Z=None, pie=None):
+        """Compute the log-likelihood of the current state Z.
+
+        Parameters
+        ----------
+        Z : np.ndarray, optional
+            Clique cover matrix, by default None.
+        pie : float, optional
+            Parameter for the model, by default None.
+
+        Returns
+        -------
+        float
+            Log-likelihood value.
+        """
         if Z is None:
             Z = self.Z
         if pie is None:
             pie = self.pie
         cic = np.dot(Z.T, Z)
         cic = cic - np.diag(np.diag(cic))
-        # check whether cic is ever zero, when network is 1
-        zero_check = (1 - np.minimum(cic, 1)) * self.network
+
+        zero_check = (1 - np.minimum(cic, 1)) * self.adj
         if np.sum(zero_check) == 0:
             p0 = (1 - pie) ** cic
             p1 = 1 - p0
-            network_mask = self.network + 1
+            network_mask = self.adj + 1
             network_mask = np.triu(network_mask, 1) - 1
-            # network_mask = np.triu(self.network,1)
-            lp = np.sum(np.log(p0[np.where(network_mask == 0)])) + np.sum(
-                np.log(p1[np.where(network_mask == 1)])
-            )
-
+            lp_0 = np.sum(np.log(1e-6 + p0[np.where(network_mask == 0)]))
+            lp_1 = np.sum(np.log(1e-6 + p1[np.where(network_mask == 1)]))
+            lp = lp_0 + lp_1
         else:
             lp = -np.inf
         return lp
 
     def loglikZn(self, node, Z=None):
+        """Compute the log-likelihood of node-specific Z.
+
+        Parameters
+        ----------
+        node : int
+            Node index.
+        Z : np.ndarray, optional
+            Clique cover matrix, by default None.
+
+        Returns
+        -------
+        float
+            Log-likelihood value.
+        """
         if Z is None:
             Z = self.Z
         cic = np.dot(Z[:, node].T, Z)
         cic[node] = 0
-        # check whether cic is ever zero, when network is 1
-        zero_check = (1 - np.minimum(cic, 1)) * self.network[node, :]
+
+        zero_check = (1 - np.minimum(cic, 1)) * self.adj[node, :]
         if np.sum(zero_check) == 0:
             p0 = (1 - self.pie) ** cic
             p1 = 1 - p0
-            lp = np.sum(np.log(p0[np.where(self.network[node, :] == 0)])) + np.sum(
-                np.log(p1[np.where(self.network[node, :] == 1)])
+            lp = np.sum(np.log(p0[np.where(self.adj[node, :] == 0)])) + np.sum(
+                np.log(p1[np.where(self.adj[node, :] == 1)])
             )
-
         else:
             lp = -np.inf
         return lp
 
     def splitmerge(self):
-        # pick an edge
-        link_id = np.random.choice(self.num_links)
-        r = np.random.rand()
-        if r < 0.5:
-            sender = self.links[link_id][0]
-            receiver = self.links[link_id][1]
+        """Perform split-merge step to update Z."""
+        link_id = np.random.choice(self.num_edges)
+        if np.random.rand() < 0.5:
+            sender = self.edges[link_id][0]
+            receiver = self.edges[link_id][1]
         else:
-            # randomizing because otherwise the distributions will be different in the split
-            sender = self.links[link_id][1]
-            receiver = self.links[link_id][0]
-        # pick the first clique
-        valid_cliques = np.where(self.Z[:, sender] == 1)[0]
-        clique_i = valid_cliques[np.random.choice(len(valid_cliques))]
-        valid_cliques = np.where(self.Z[:, receiver] == 1)[0]
-        clique_j = valid_cliques[np.random.choice(len(valid_cliques))]
+            sender = self.edges[link_id][1]
+            receiver = self.edges[link_id][0]
+
+        valid_cliques_i = np.where(self.Z[:, sender] == 1)[0]
+        clique_i = np.random.choice(valid_cliques_i)
+
+        valid_cliques_j = np.where(self.Z[:, receiver] == 1)[0]
+        clique_j = np.random.choice(valid_cliques_j)
 
         if clique_i == clique_j:
-            # propose split
-            Z_prop = self.Z + 0
+            clique_size = self.Z[clique_i].sum()
+            if clique_size <= 2:
+                return
+
+            Z_prop = self.Z.copy()
             Z_prop = np.delete(Z_prop, clique_i, 0)
             Z_prop = np.vstack((Z_prop, np.zeros((2, self.num_nodes))))
 
             lqsplit = 0
             lpsplit = 0
 
-            mk = np.sum(Z_prop, 0)
-            for node in range(self.num_nodes):  # np.random.permutation(self.num_nodes):
+            mk = np.sum(self.Z, 0)
+
+            for node in range(self.num_nodes):
                 if self.Z[clique_i, node] == 1:
                     if node == sender:
-                        # must be 11 or 10
                         Z_prop[self.K - 1, node] = 1
 
                         r = np.random.rand()
                         if r < 0.5:
                             Z_prop[self.K, node] = 1
-                            # mk is one bigger, and K is one bigger, p1
                             lpsplit = (
                                 lpsplit
                                 + np.log(mk[node] + 1 - self.sigma)
                                 - np.log(self.K + 1 - self.sigma)
                             )
                         else:
-                            # mk is one bigger, and K is one bigger, p0
                             lpsplit = (
                                 lpsplit
-                                + np.log(self.K + 1 - mk[node] - 1)
+                                + np.log(self.K + 1 - mk[node] - 1 + 1e-3)
                                 - np.log(self.K + 1 - self.sigma)
                             )
                         lqsplit -= np.log(2)
-
                     elif node == receiver:
-                        # must be 11 or 01
                         Z_prop[self.K, node] = 1
                         r = np.random.rand()
                         if r < 0.5:
@@ -309,7 +482,7 @@ class LatentCliqueCoverSampler:
                         else:
                             lpsplit = (
                                 lpsplit
-                                + np.log(self.K - mk[node])
+                                + np.log(self.K - mk[node] + 1e-3)
                                 - np.log(self.K + 1 - self.sigma)
                             )
                         lqsplit -= np.log(2)
@@ -317,23 +490,21 @@ class LatentCliqueCoverSampler:
                         r = np.random.rand()
                         if r < (1 / 3):
                             Z_prop[self.K - 1, node] = 1
-                            # mk is one bigger, and K is one bigger, p0
                             lpsplit = (
                                 lpsplit
-                                + np.log(self.K - mk[node])
+                                + np.log(self.K - mk[node] + 1e-3)
                                 - np.log(self.K + 1 - self.sigma)
                             )
                         elif r < (2 / 3):
                             Z_prop[self.K, node] = 1
                             lpsplit = (
                                 lpsplit
-                                + np.log(self.K - mk[node])
+                                + np.log(self.K - mk[node] + 1e-3)
                                 - np.log(self.K + 1 - self.sigma)
                             )
                         else:
                             Z_prop[self.K - 1, node] = 1
                             Z_prop[self.K, node] = 1
-                            # mk is one bigger, and K is one bigger, p1
                             lpsplit = (
                                 lpsplit
                                 + np.log(mk[node] + 1 - self.sigma)
@@ -341,25 +512,20 @@ class LatentCliqueCoverSampler:
                             )
                         lqsplit -= np.log(3)
                 else:
-                    # mk is the same and K is one bigger, p0
                     lpsplit = (
                         lpsplit
                         + np.log(self.K + 1 - mk[node])
                         - np.log(self.K + 1 - self.sigma)
                     )
 
-            # is the resulting proposal valid?
-
             ll_prop = self.loglikZ(Z_prop)
             if not np.isinf(ll_prop):
                 ll_old = self.loglikZ()
-                # then calculate the acceptance prob
                 lqsplit = (
                     lqsplit
                     - np.log(np.sum(self.Z[:, sender]))
                     - np.log(np.sum(self.Z[:, receiver]))
                 )
-                # lqsplit =-np.log(np.sum(self.Z[:,sender]))-np.log(np.sum(self.Z[:,receiver]))
                 lqmerge = -np.log(
                     np.sum(self.Z[:, sender])
                     - self.Z[clique_i, sender]
@@ -375,32 +541,22 @@ class LatentCliqueCoverSampler:
                 r = np.log(np.random.rand())
 
                 if r < laccept:
-                    # pdb.set_trace()
-                    # self.checksums
-                    self.Z = Z_prop + 0
+                    self.Z = Z_prop.copy()
                     self.K += 1
-                # self.checksums()
-
         else:
-            # propose merge
             Z_sum = self.Z[clique_i, :] + self.Z[clique_j, :]
-            Z_prop = self.Z + 0
+            Z_prop = self.Z.copy()
             Z_prop[clique_i] = np.minimum(Z_sum, 1)
             Z_prop = np.delete(Z_prop, clique_j, 0)
             ll_prop = self.loglikZ(Z_prop)
             if not np.isinf(ll_prop):
-                # merge OK, proceed
                 mk = np.sum(self.Z, 0) - Z_sum
-                # calculate the backward probability
                 num_affected = np.sum(Z_prop)
                 if num_affected < 2:
                     raise ValueError("num_affected<2")
-                # lqsplit = -2*np.log(2) - (num_affected-2)*np.log(3)
-                # OK now the merge probability
                 lqmerge = -np.log(np.sum(self.Z[:, sender])) - np.log(
                     np.sum(self.Z[:, receiver])
                 )
-                # lqsplit = lqsplit -np.log(np.sum(self.Z[:,sender])-self.Z[clique_i,sender]-self.Z[clique_j,sender]+1) - np.log(np.sum(self.Z[:,receiver])-self.Z[clique_i,receiver]-self.Z[clique_j,receiver]+1)
                 lqsplit = -np.log(
                     np.sum(self.Z[:, sender])
                     - self.Z[clique_i, sender]
@@ -412,26 +568,22 @@ class LatentCliqueCoverSampler:
                     - self.Z[clique_j, receiver]
                     + 1
                 )
-                # lqsplit +=num_opt*np.log(0.5)
 
                 lpsplit = 0
                 for node in range(self.num_nodes):
                     if Z_sum[node] == 0:
-                        # mk is the same, and K the same, p0
                         lpsplit = (
                             lpsplit
                             + np.log(self.K - mk[node])
                             - np.log(self.K - self.sigma)
                         )
                     elif Z_sum[node] == 1:
-                        # mk is plus one, and K the same, p0
                         lpsplit = (
                             lpsplit
                             + np.log(self.K - mk[node] - 1)
                             - np.log(self.K - self.sigma)
                         )
                     else:
-                        # mk is plus one, and K the same, p2
                         lpsplit = (
                             lpsplit
                             + np.log(mk[node] + 1 - self.sigma)
@@ -445,7 +597,7 @@ class LatentCliqueCoverSampler:
                 r = np.log(np.random.rand())
 
                 if r < laccept:
-                    self.Z = Z_prop + 0
+                    self.Z = Z_prop.copy()
                     self.K -= 1
 
 
@@ -454,40 +606,49 @@ class LatentCliqueCoverLifting(SimplicialCliqueLifting):
 
     Parameters
     ----------
+    pie : float, optional
+        Parameter for the model, by default 0.8.
+    it : int, optional
+        Number of iterations for sampling, by default None.
+    init : str, optional
+        Initialization method for the clique cover matrix, by default "edges".
     max_cell_length : int, optional
         The maximum length of the cycles to be lifted. Default is None.
     **kwargs : optional
         Additional arguments for the class.
     """
 
-    def __init__(self, pie: float = 0.8, it=100, warmup_it=10, init="links", **kwargs):
+    def __init__(self, pie: float = 0.8, it=None, init="edges", **kwargs):
         super().__init__(**kwargs)
         self.pie = pie
         self.it = it
-        self.warmup_it = warmup_it
         self.init = init
 
-    def lift_topology(self, data: torch_geometric.data.Data) -> dict:
+    def lift_topology(
+        self, data: torch_geometric.data.Data, verbose: bool = False
+    ) -> dict:
         r"""Finds the cycles of a graph and lifts them to 2-cells.
 
         Parameters
         ----------
         data : torch_geometric.data.Data
             The input data to be lifted.
+        verbose : bool, optional
+            Whether to display verbose output, by default False.
 
         Returns
         -------
         dict
             The lifted topology.
         """
-        net = torch_geometric.utils.to_dense_adj(data.edge_index)[0].numpy()
-        for i in range(net.shape[0]):
-            net[i, i] = 1
-        links = data.edge_index.numpy().T
-
-        mod = LatentCliqueCoverSampler(net, links, pie=self.pie, init=self.init)
-        mod.sample(sample_hypers=False, num_iters=self.warmup_it, dot_every=1)
-        mod.sample(sample_hypers=True, num_iters=self.it, dot_every=1)
+        G = self._generate_graph_from_data(data)
+        adj = nx.adjacency_matrix(G).toarray()
+        pie_mean = 0.95
+        pie_confidence = 10
+        pie_params = [pie_mean * pie_confidence, (1 - pie_mean) * pie_confidence]
+        mod = LatentCliqueCoverSampler(adj, init=self.init, pie_params=pie_params)
+        it = self.it if self.it is not None else data.num_nodes
+        mod.sample(sample_hypers=True, num_iters=it, do_gibbs=True, verbose=verbose)
 
         adj = mod.Z.T @ mod.Z
         adj = np.minimum(adj - np.diag(np.diag(adj)), 1)
@@ -500,40 +661,46 @@ class LatentCliqueCoverLifting(SimplicialCliqueLifting):
 
 def sample_from_ibp(K, alpha, sigma, c):
     """
-    samples from the random clique cover model using the three parameter ibp
-    params
-        K: number of random cliques
-        alpha, sigma, c: ibp parameters
-    returns
-        a sparse matrix, compressed by rows, representing the clique membership matrix
-        recover the adjacency matrix with min(Z'Z, 1)
+    Auxiliary function to sample from the Indian Buffet Process.
+
+    Parameters
+    ----------
+    K : int
+        Number of random cliques.
+    alpha : float
+        Alpha parameter of the IBP.
+    sigma : float
+        Sigma parameter of the IBP.
+    c : float
+        c parameter of the IBP.
+
+    Returns
+    -------
+    csr_matrix
+        A sparse matrix, compressed by rows, representing the clique membership matrix.
+        Recover the adjacency matrix with min(Z'Z, 1).
     """
-    # pp = poissonparams(K, alpha, sigma, c)
-    ivec = np.arange(K, dtype=float)
+    k_seq = np.arange(K, dtype=float)
     lpp = (
         np.log(alpha)
         + gammaln(1.0 + c)
         - gammaln(c + sigma)
-        + gammaln(ivec + c + sigma)
-        - gammaln(ivec + 1.0 + c)
+        + gammaln(k_seq + c + sigma)
+        - gammaln(k_seq + 1.0 + c)
     )
     pp = np.exp(lpp)
     new_nodes = np.random.poisson(pp)
     Ncols = new_nodes.sum()
     node_count = np.zeros(Ncols)
 
-    # used to build sparse matrix, entries of each Zij=1
     colidx = []
     rowidx = []
     rightmost_node = 0
 
-    # for each clique
     for n in range(K):
-        # revisit each previously seen node
         for k in range(rightmost_node):
             prob_repeat = (node_count[k] - sigma) / (n + c)
-            r = np.random.rand()
-            if r < prob_repeat:
+            if np.random.rand() < prob_repeat:
                 rowidx.append(n)
                 colidx.append(k)
                 node_count[k] += 1
@@ -545,7 +712,6 @@ def sample_from_ibp(K, alpha, sigma, c):
 
         rightmost_node += new_nodes[n]
 
-    # build sparse matrix
     data = np.ones(len(rowidx), int)
     shape = (K, Ncols)
     Z = csr_matrix((data, (rowidx, colidx)), shape)
@@ -554,7 +720,7 @@ def sample_from_ibp(K, alpha, sigma, c):
 
 
 if __name__ == "__main__":
-    K, alpha, sigma, c = 10, 3, 0.7, 5
+    K, alpha, sigma, c = 30, 3, 0.7, 5
     Z = sample_from_ibp(K, alpha, sigma, c)
 
     adj = Z.transpose() @ Z
@@ -562,7 +728,7 @@ if __name__ == "__main__":
     for n in g.nodes():
         g.remove_edge(n, n)
 
-    print("Number of links:", g.number_of_edges())
+    print("Number of edges:", g.number_of_edges())
     print("Number of nodes:", g.number_of_nodes())
 
     # Transform to a torch geometric data object
@@ -570,8 +736,5 @@ if __name__ == "__main__":
     data.x = torch.ones(data.num_nodes, 1)
 
     # Lift the topology to a cell complex
-    lifting = LatentCliqueCoverLifting(piex=0.8, it=100, init="links")
-    complex = lifting.lift_topology(data)
-
-    # Print the cell complex
-    print(complex)
+    lifting = LatentCliqueCoverLifting(pie=0.8, init="edges")
+    complex = lifting.lift_topology(data, verbose=True)
