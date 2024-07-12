@@ -4,16 +4,14 @@ from collections import Counter, defaultdict
 from functools import cache, reduce
 from math import comb, factorial
 from operator import or_
-from typing import Generator, Sized, Union
+from typing import Generator, Sized
 
-import networkx as nx
 import numpy as np
 import toponetx as tnx
 import torch
 import torch_geometric
-from scipy.linalg import eigh_tridiagonal
-from scipy.sparse import coo_array, diags, sparray
-from scipy.sparse.linalg import LinearOperator, eigsh
+from scipy.sparse import coo_array, sparray
+from scipy.sparse.linalg import eigsh
 
 from modules.transforms.liftings.hypergraph2simplicial.base import (
     Hypergraph2SimplicialLifting,
@@ -147,7 +145,7 @@ def downward_closure(H: list, d: int = 1, coeffs: bool = False):
         S = np.array(list(S), dtype=(int, (d + 1,)))
         S.sort(axis=1)
         # S = S[np.lexsort(np.rot90(S))]
-        return S
+        return S  # noqa: RET505
     else:
         from hirola import HashTable
 
@@ -174,7 +172,7 @@ def downward_closure(H: list, d: int = 1, coeffs: bool = False):
             X.extend(cc.values())
         coeffs = coo_array((X, (I, J)), shape=(len(S), len(card_memberships)))
         coeffs.eliminate_zeros()
-        return S.keys.reshape(len(S.keys), d + 1), coeffs
+        return S.keys.reshape(len(S.keys), d + 1), coeffs  # noqa: RET505
 
 
 def normalize_hg(H: list):
@@ -183,8 +181,7 @@ def normalize_hg(H: list):
     This maps all node ids back to the standard index set [0, 1, ..., n - 1].
     """
     V = np.fromiter(reduce(or_, map(set, H)), dtype=int)
-    H = [np.unique(np.searchsorted(V, np.sort(he).astype(int))) for he in H]
-    return H
+    return [np.unique(np.searchsorted(V, np.sort(he).astype(int))) for he in H]
 
 
 def top_weights(simplices: np.ndarray, coeffs: sparray, normalize: bool = False):

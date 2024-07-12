@@ -1,17 +1,13 @@
 # %% Imports
 import numpy as np
-import toponetx as tnx
-import torch_geometric
+import torch
 
-from modules.data.load.loaders import GraphLoader, HypergraphLoader
+from modules.data.load.loaders import HypergraphLoader
 from modules.data.preprocess.preprocessor import PreProcessor
-from modules.transforms.liftings.hypergraph2simplicial.heat_lifting import normalize_hg
+from modules.models.simplicial.san import SAN
 from modules.utils.utils import (
     describe_data,
-    describe_hypergraph,
-    describe_simplicial_complex,
     load_dataset_config,
-    load_model_config,
     load_transform_config,
 )
 
@@ -42,12 +38,9 @@ lifted_dataset = PreProcessor(dataset, transform_config, loader.data_dir)
 ## There's too many things wrong the describe functions to warrant getting them to work
 # describe_data(lifted_dataset)
 # describe_simplicial_complex(lifted_dataset)
+print(f"Simplicial complex with: {lifted_dataset.num_nodes} vertices")
 
 # %% Running a Model over the Lifted Dataset
-import toponetx as tnx
-from topomodelx.utils.sparse import from_sparse
-
-from modules.models.simplicial.san import SAN, SANModel
 
 ## Configure
 dataset_config.num_features = 1
@@ -60,12 +53,12 @@ dataset_config.num_classes = 2
 # model = SANModel(model_config, dataset_config)
 
 # %% Prep inputs for a model
-import torch
-
+rng = np.random.default_rng(12345)
 x_0 = lifted_dataset.x_0.T.float()
 x_1 = lifted_dataset.x_1.T.float()
 x = x_1 + torch.sparse.mm(lifted_dataset.incidence_1.T, x_0)
-y = torch.tensor(np.random.choice([0, 1], size=dataset.num_nodes))
+
+y = torch.tensor(rng.choice([0, 1], size=dataset.num_nodes))
 y_true = np.zeros((len(y), 2))
 y_true[:, 0] = y
 y_true[:, 1] = 1 - y
