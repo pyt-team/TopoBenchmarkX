@@ -1,367 +1,244 @@
-<h2 align="center">
-  <img src="resources/logo.jpg" width="800">
-</h2>
+# A Random Latent Clique Lifting from Graphs to Simplicial Complexes
 
-<h3 align="center">
-    A Comprehensive Benchmark Suite for Topological Deep Learning
-</h3>
+**TL;DR** We propose a lifting that ensures both 1) small-world property and 2) edge/cell sparsity. Combining these two properties is very attractive for Topological Deep Learning (TDL) because it ensures computational efficiency due to the reduced number of higher-order connections: only a few message-passing layers connect any two nodes.
 
-<p align="center">
-Assess how your model compares against state-of-the-art topological neural networks.
-</p>
+**Background**. A graph is **sparse** if its number of edges grows proportional to the number of nodes. Many real-world graphs are sparse, but they contain **many densely connected subgraphs** and exhibit high clustering coefficients.  Moreover, such real-world graphs frequently exhibit the **small-world property**, where any two nodes are connected by a short path of length proportional to the logarithm of the number of nodes. For instance, these are well-known properties of social networks, biological networks, and the Internet.
 
-<div align="center">
+**Contributions**. In this notebook, we present a novel random lifting procedure from graphs to simplicial complexes. The procedure is based on a relatively recent proposed Bayesian nonparametric random graph model for random clique covers (Williamson & Tec, 2020). Specifically, the model can learn latent clique complexes that are consistent with the input graph. The model can capture power-law degree distribution, global sparsity, and non-vanishing local clustering coefficient. Its small-world property is also guaranteed, which is a very attractive property for Topological Deep Learning (TDL).
+***
 
-[![Lint](https://github.com/geometric-intelligence/TopoBenchmark/actions/workflows/lint.yml/badge.svg)](https://github.com/geometric-intelligence/TopoBenchmark/actions/workflows/lint.yml)
-[![Test](https://github.com/geometric-intelligence/TopoBenchmark/actions/workflows/test.yml/badge.svg)](https://github.com/geometric-intelligence/TopoBenchmark/actions/workflows/test.yml)
-[![Codecov](https://codecov.io/gh/geometric-intelligence/TopoBenchmark/branch/main/graph/badge.svg)](https://app.codecov.io/gh/geometric-intelligence/TopoBenchmark)
-[![Docs](https://img.shields.io/badge/docs-website-brightgreen)](https://geometric-intelligence.github.io/topobenchmark/index.html)
-[![Python](https://img.shields.io/badge/python-3.10+-blue?logo=python)](https://www.python.org/)
-[![license](https://badgen.net/github/license/geometric-intelligence/TopoBenchmark?color=green)](https://github.com/geometric-intelligence/TopoBenchmark/blob/main/LICENSE)
-[![slack](https://img.shields.io/badge/chat-on%20slack-purple?logo=slack)](https://join.slack.com/t/geometric-intelligenceworkspace/shared_invite/zt-2k63sv99s-jbFMLtwzUCc8nt3sIRWjEw)
+In the original work [1], the distribution has been used as a prior on an observed input graph. In particular, in the Bayesian setting, the model is useful to obtain a distribution on latent **clique complexes**, i.e. a specific class of **simplicial complexes**, whose 1-skeleton structural properties are consistent with the ones of the input graph used to compute the likelihood. Indeed, one of the features of the posterior distribution from which the latent complex is sampled is that the set of latent 1-simplices (edges) is a superset of the set of edges of the input graph.
+
+***
+
+In the context of **Topological Deep Learning** [2][3] and the very recently emerged paradigm of **Latent Topology Inference** (LTI) [4], it is natural to look at the model in [1] as a novel LTI method able to infer a **random latent simplicial complex** from an input graph. Or, in other words, to use [1] as a novel random lifting procedure from graphs to simplicial complexes.
+
+Next, we provide a quick introduction to the model in [1]. For a more in-depth exposition, please refer to the paper. To the best of our knowledge, this is the first random lifting procedure relying on Bayesian arguments.
+
+To summarize, this is:
+- a **non-deterministic** lifting,
+- **not present** in the literature as a lifting prcedure,
+- **based on connectivity**,
+-  **modifying** the initial connectivity of the graph by adding edges (thus, this can be also considered as a graph rewiring method).
+
+# The Random Clique Cover Model
+
+Let $G=(V,E)$ be a graph with $V$ the set of vertices and $E$ the set of edges. Denote the numer of nodes as $N=|V|$. A *clique cover* can be described as a matrix $Z$ of size $K \times N$ where $K$ is the number of cliques such that $Z_{k, i} = 1$ if node $i$ is in clique $k$ and $Z_{k, i} = 0$ otherwise. The Random Clique Cover (RCC) Model, defined in [1], is a probabilistic model for the matrix $Z$. This matrix can have an infinite number of rows and columns, but only a finite number of them will be active. The model is based on the Indian Buffet Process (IBP), which is a distribution over binary matrices with a possibly infinite number of rows and columns, or more specifically, the Stable Beta IBP as described in [5]. While the mathematics behind the IBP are complex,  the model admits a highly intuitive representation describe below.
+
+First, recall that a clique is a fully connected subset of vertices. Therefore, a clique cover $Z$ induces an adjacency matrix by the formula $A = min(Z^T Z - diag(Z^T Z), 1)$, where $min$ is the element-wise minimum. The IBP model can be described recursively as follows:
+
+Conditional on $Z_1, Z_2, ..., Z_{K-1}$, where $Z_j$ is the $j$-th row of $Z$. Then, $Z_K$ is drawn as follows:
+
+1. $Z_K$ will contain new unobserved nodes according to a distribution\:
+$$Z_K | Z_1, Z_2, ..., Z_{K-1}\sim \text{Poisson}\left(\alpha \frac{\Gamma(1 + c)\Gamma(N + c + \sigma - 1)}{\Gamma(N + \sigma)\Gamma(c + \sigma)}\right)$$
+2. The probability that a previously observed node $n$ will belong to $Z_K$ is proportional to how many cliques it is already in. Specifically, letting $m_i=\sum_{j=1}^{k=K-1} Z_{j, i}$, then 
+$$P(Z_{K,i}=1|Z_1, Z_2, ..., Z_{K-1}) = \frac{m_i + \sigma}{K + c - 1}.$$
+
+**The last expresssion is highly inuitive in the sense that the number of cliques that a node will appear in is proportional to the number of cliques it is already in.**
+
+The RCC model depends on four parameters $\alpha, c, \sigma, \pi$. The first three parameters are part of the IBP. Explaining them in detail is beyond the scope of this notebook. However, the reader may see [5]. Fortunately,  the learned (posterior) values of $\alpha, \sigma, c$ are strongly determined by the data itself. In contrast $\pi$ is approximately the probability that an edge is missing from the graph. Generally, the lower $\pi$ is, the lower the number of cliques will be and the less interconnected the nodes of the clique will be.
+
+Impotantly, by leveraging the poissiblity of latent inferred edges, one will superimpose the small-world property on the graph. 
+
+<!-- Williamson & Tec (2020) introduce a Bayesian nonparametric graph model that addresses the challenge of modeling large real-world graphs, which are typically sparse but contain many densely connected subgraphs. Specifically, the model is the first to introduce a fully probabilistic (random) framework that allows for exchangeability that simultaneously allows for global sparsity and local density, including high clustering coefficients and power-law degree distributions. The model is based on random edge clique covers, which are collections of cliques (fully connected subsets of vertices) that cover all edges in the graph. Additionally, the model allows for latent unobsered edges which results in latent cliques which may not be present in the observed graph. 
+
+The proposed model explicitly represents graphs as collections of cliques, or fully connected subsets of vertices, selected using a nonparametric feature selection model, such as the stable beta Indian buffet process. This approach allows the model to exhibit local density and non-zero local clustering coefficients while maintaining global sparsity4. 
+
+In summary, th emodel will learn a small-world graph on top of the existing graph, by infilling the graph with latent edges if necessary. It is possible to assign a prior distribution to control the prior belief of the proporiton of latent edges in the graph. -->
+
+### Imports and utilities
 
 
-</div>
-
-<p align="center">
-  <a href="#pushpin-overview">Overview</a> •
-  <a href="#jigsaw-get-started">Get Started</a> •
-  <a href="#anchor-tutorials">Tutorials</a> •
-  <a href="#gear-neural-networks">Neural Networks</a> •
-  <a href="#rocket-liftings">Liftings</a> •
-  <a href="#books-datasets">Datasets</a> •
-  <a href="#mag-references">References</a> 
-</p>
-
-
-
-## :pushpin: Overview
-
-`TopoBenchmark` (TB) is a modular Python library designed to standardize benchmarking and accelerate research in Topological Deep Learning (TDL). In particular, TB allows to train and compare the performances of all sorts of Topological Neural Networks (TNNs) across the different topological domains, where by _topological domain_ we refer to a graph, a simplicial complex, a cellular complex, or a hypergraph. For detailed information, please refer to the [`TopoBenchmark: A Framework for Benchmarking Topological Deep Learning`](https://arxiv.org/pdf/2406.06642) paper.
-
-<p align="center">
-  <img src="resources/workflow.jpg" width="700">
-</p>
-
-The main pipeline trains and evaluates a wide range of state-of-the-art TNNs and Graph Neural Networks (GNNs) (see <a href="#gear-neural-networks">:gear: Neural Networks</a>) on numerous and varied datasets and benchmark tasks (see <a href="#books-datasets">:books: Datasets</a> ). Through TopoTune (see <a href="#bulb-topotune">:bulb: TopoTune</a>), the library provides easy access to training and testing an entire landscape of graph-based TNNs, new or existing, on any topological domain.
-
-Additionally, the library offers the ability to transform, i.e. _lift_, each dataset from one topological domain to another (see <a href="#rocket-liftings">:rocket: Liftings</a>), enabling for the first time an exhaustive inter-domain comparison of TNNs.
-
-## :jigsaw: Get Started
-
-### Create Environment
-
-If you do not have conda on your machine, please follow [their guide](https://docs.anaconda.com/free/miniconda/miniconda-install/) to install it. 
-
-First, clone the `TopoBenchmark` repository and set up a conda environment `tb` with python 3.11.3. 
-
-```
-git clone git@github.com:geometric-intelligence/topobenchmark.git
-cd TopoBenchmark
-conda create -n tb python=3.11.3
+```python
+%cd challenge-icml-2024
 ```
 
-Next, check the CUDA version of your machine:
-```
-/usr/local/cuda/bin/nvcc --version
-```
-and ensure that it matches the CUDA version specified in the `env_setup.sh` file (`CUDA=cu121` by default). If it does not match, update `env_setup.sh` accordingly by changing both the `CUDA` and `TORCH` environment variables to compatible values as specified on [this website](https://github.com/pyg-team/pyg-lib).
+    /content/challenge-icml-2024
 
-Next, set up the environment with the following command.
 
-```
-source env_setup.sh
-```
-This command installs the `TopoBenchmark` library and its dependencies. 
 
-### Run Training Pipeline
-
-Next, train the neural networks by running the following command:
-
-```
-python -m topobenchmark 
+```python
+# With this cell any imported module is reloaded before each cell execution
+%load_ext autoreload
+%autoreload 2
+from modules.data.load.loaders import GraphLoader
+from modules.data.preprocess.preprocessor import PreProcessor
+from modules.utils.utils import (
+    describe_data,
+    load_dataset_config,
+    load_model_config,
+    load_transform_config,
+)
 ```
 
-Thanks to `hydra` implementation, one can easily override the default experiment configuration through the command line. For instance, the model and dataset can be selected as:
+## Loading the Dataset
 
-```
-python -m topobenchmark model=cell/cwn dataset=graph/MUTAG
-```
-
-**Remark:** By default, our pipeline identifies the source and destination topological domains, and applies a default lifting between them if required.
-
-The same CLI override mechanism also applies when modifying more finer configurations within a `CONFIG GROUP`. Please, refer to the official [`hydra`documentation](https://hydra.cc/docs/intro/) for further details.
+Here we just need to specify the name of the available dataset that we want to load. First, the dataset config is read from the corresponding yaml file (located at `/configs/datasets/` directory), and then the data is loaded via the implemented `Loaders`.
 
 
 
-## :bike: Experiments Reproducibility
-To reproduce Table 1 from the [`TopoBenchmark: A Framework for Benchmarking Topological Deep Learning`](https://arxiv.org/pdf/2406.06642) paper, please run the following command:
-
-```
-bash scripts/reproduce.sh
-```
-**Remark:** We have additionally provided a public [W&B (Weights & Biases) project](https://wandb.ai/telyatnikov_sap/TopoBenchmark_main?nw=nwusertelyatnikov_sap) with logs for the corresponding runs (updated on June 11, 2024).
-
-
-## :anchor: Tutorials
-
-Explore our [tutorials](https://github.com/geometric-intelligence/TopoBenchmark/tree/main/tutorials) for further details on how to add new datasets, transforms/liftings, and benchmark tasks. 
-
-## :gear: Neural Networks
-
-We list the neural networks trained and evaluated by `TopoBenchmark`, organized by the topological domain over which they operate: graph, simplicial complex, cellular complex or hypergraph. Many of these neural networks were originally implemented in [`TopoModelX`](https://github.com/pyt-team/TopoModelX).
-
-
-### Graphs
-| Model | Reference |
-| --- | --- |
-| GAT | [Graph Attention Networks](https://openreview.net/pdf?id=rJXMpikCZ) |
-| GIN | [How Powerful are Graph Neural Networks?](https://openreview.net/pdf?id=ryGs6iA5Km) |
-| GCN | [Semi-Supervised Classification with Graph Convolutional Networks](https://arxiv.org/pdf/1609.02907v4) |
-| GraphMLP | [Graph-MLP: Node Classification without Message Passing in Graph](https://arxiv.org/pdf/2106.04051) |
-
-### Simplicial complexes
-| Model | Reference |
-| --- | --- |
-| SAN | [Simplicial Attention Neural Networks](https://arxiv.org/pdf/2203.07485) |
-| SCCN | [Efficient Representation Learning for Higher-Order Data with Simplicial Complexes](https://openreview.net/pdf?id=nGqJY4DODN) |
-| SCCNN | [Convolutional Learning on Simplicial Complexes](https://arxiv.org/pdf/2301.11163) |
-| SCN | [Simplicial Complex Neural Networks](https://ieeexplore.ieee.org/document/10285604) |
-
-### Cellular complexes
-| Model | Reference |
-| --- | --- |
-| CAN | [Cell Attention Network](https://arxiv.org/pdf/2209.08179) |
-| CCCN | Inspired by [A learning algorithm for computational connected cellular network](https://ieeexplore.ieee.org/document/1202221), implementation adapted from [Generalized Simplicial Attention Neural Networks](https://arxiv.org/abs/2309.02138)|
-| CXN | [Cell Complex Neural Networks](https://openreview.net/pdf?id=6Tq18ySFpGU) |
-| CWN | [Weisfeiler and Lehman Go Cellular: CW Networks](https://arxiv.org/pdf/2106.12575) |
-
-### Hypergraphs
-| Model | Reference |
-| --- | --- |
-| AllDeepSet | [You are AllSet: A Multiset Function Framework for Hypergraph Neural Networks](https://openreview.net/pdf?id=hpBTIv2uy_E) |
-| AllSetTransformer | [You are AllSet: A Multiset Function Framework for Hypergraph Neural Networks](https://openreview.net/pdf?id=hpBTIv2uy_E) |
-| EDGNN | [Equivariant Hypergraph Diffusion Neural Operators](https://arxiv.org/pdf/2207.06680) |
-| UniGNN | [UniGNN: a Unified Framework for Graph and Hypergraph Neural Networks](https://arxiv.org/pdf/2105.00956) |
-| UniGNN2 | [UniGNN: a Unified Framework for Graph and Hypergraph Neural Networks](https://arxiv.org/pdf/2105.00956) |
-
-### Combinatorial complexes
-| Model | Reference |
-| --- | --- |
-| GCCN | [TopoTune: A Framework for Generalized Combinatorial Complex Neural Networks](https://arxiv.org/pdf/2410.06530) |
-
-## :bulb: TopoTune
-
-We include TopoTune, a comprehensive framework for easily defining and training new, general TDL models on any domain using any (graph) neural network ω as a backbone. The pre-print detailing this framework is [TopoTune: A Framework for Generalized Combinatorial Complex Neural Networks](https://arxiv.org/pdf/2410.06530). In a GCCN (pictured below), the input complex is represented as an ensemble of strictly augmented Hasse graphs, one per neighborhood of the complex. Each of these Hasse graphs is processed by a sub model ω, and the outputs are rank-wise aggregated in between layers. 
-
-<p align="center">
-  <img src="resources/gccn.jpg" width="700">
-</p>
-
-### Defining and training a GCCN
-To implement and train a GCCN, run the following command line with the desired choice of dataset, lifting domain (ex: `cell`, `simplicial`), PyTorch Geometric backbone model (ex: `GCN`, `GIN`, `GAT`, `GraphSAGE`) and parameters (ex. `model.backbone.GNN.num_layers=2`), neighborhood structure (routes), and other hyperparameters.
-
-
-```
-python -m topobenchmark \
-    dataset=graph/PROTEINS \
-    dataset.split_params.data_seed=1 \
-    model=cell/topotune\
-    model.tune_gnn=GCN \
-    model.backbone.GNN.num_layers=2 \
-    model.backbone.neighborhoods=\[1-up_laplacian-0,1-down_incidence-2\] \
-    model.backbone.layers=4 \
-    model.feature_encoder.out_channels=32 \
-    model.feature_encoder.proj_dropout=0.3 \
-    model.readout.readout_name=PropagateSignalDown \
-    logger.wandb.project=TopoTune_cell \
-    trainer.max_epochs=1000 \
-    callbacks.early_stopping.patience=50 \
+```python
+dataset_name = "manual_dataset"
+dataset_config = load_dataset_config(dataset_name)
+loader = GraphLoader(dataset_config)
 ```
 
-To use a single augmented Hasse graph expansion, use `model={domain}/topotune_onehasse` instead of `model={domain}/topotune`.
+    
+    Dataset configuration for manual_dataset:
+    
+    {'data_domain': 'graph',
+     'data_type': 'toy_dataset',
+     'data_name': 'manual',
+     'data_dir': 'datasets/graph/toy_dataset',
+     'num_features': 1,
+     'num_classes': 2,
+     'task': 'classification',
+     'loss_type': 'cross_entropy',
+     'monitor_metric': 'accuracy',
+     'task_level': 'node'}
 
-To specify a set of neighborhoods on the complex, use a list of neighborhoods each specified as a string of the form 
-`r-{neighborhood}-k`, where $k$ represents the source cell rank, and $r$ is the number of ranks up or down that the selected `{neighborhood}` considers. Currently, the following options for `{neighborhood}` are supported:
-- `up_laplacian`, between cells of rank $k$ through $k+r$ cells.
-- `down_laplacian`, between cells of rank $k$ through $k-r$ cells.
-- `hodge_laplacian`, between cells of rank $k$ through both $k-r$ and $k+r$ cells.
-- `up_adjacency`, between cells of rank $k$ through $k+r$ cells.
-- `down_adjacency`, between cells of rank $k$ through $k-r$ cells.
-- `up_incidence`, from rank $k$ to $k+r$.
-- `down_incidence`, from rank $k$ to $k-r$.
 
-The number $r$ can be omitted, in which case $r=1$ by default (e.g. `up_incidence-k` represents the incidence from rank $k$ to $k+1$).
+We can then access to the data through the `load()`method:
 
 
-### Using backbone models from any package
-By default, backbone models are imported from `torch_geometric.nn.models`. To import and specify a backbone model from any other package, such as `torch.nn.Transformer` or `dgl.nn.GATConv`, it is sufficient to 1) make sure the package is installed and 2) specify in the command line:
-
+```python
+dataset = loader.load()
+describe_data(dataset)
 ```
-model.tune_gnn = {backbone_model}
-model.backbone.GNN._target_={package}.{backbone_model}
-```
 
-### Reproducing experiments
-
-We provide scripts to reproduce experiments on a broad class of GCCNs in [`scripts/topotune`](scripts/topotune) and reproduce iterations of existing neural networks in [`scripts/topotune/existing_models`](scripts/topotune/existing_models), as previously reported in the [TopoTune paper](https://arxiv.org/pdf/2410.06530).
-
-We invite users interested in running extensive sweeps on new GCCNs to replicate the `--multirun` flag in the scripts. This is a shortcut for running every possible combination of the specified parameters in a single command.
-
-## :rocket: Liftings
-
-We list the liftings used in `TopoBenchmark` to transform datasets. Here, a _lifting_ refers to a function that transforms a dataset defined on a topological domain (_e.g._, on a graph) into the same dataset but supported on a different topological domain (_e.g._, on a simplicial complex).
-
-<details>
-<summary><b> Topology Liftings </b></summary>
-
-### Graph2Simplicial
-| Name | Description | Reference |
-| --- | --- | --- |
-| CliqueLifting | The algorithm finds the cliques in the graph and creates simplices. Given a clique the first simplex added is the one containing all the nodes of the clique, then the simplices composed of all the possible combinations with one node missing, then two nodes missing, and so on, until all the possible pairs are added. Then the method moves to the next clique. | [Simplicial Complexes](https://en.wikipedia.org/wiki/Clique_complex) |
-| KHopLifting | For each node in the graph, take the set of its neighbors, up to k distance, and the node itself. These sets are then treated as simplices. The dimension of each simplex depends on the degree of the nodes. For example, a node with d neighbors forms a d-simplex. | [Neighborhood Complexes](https://arxiv.org/pdf/math/0512077) |
-
-### Graph2Cell
-| Name | Description | Reference |
-| --- | --- | --- |
-| CellCycleLifting |To lift a graph to a cell complex (CC) we proceed as follows. First, we identify a finite set of cycles (closed loops) within the graph. Second, each identified cycle in the graph is associated to a 2-cell, such that the boundary of the 2-cell is the cycle. The nodes and edges of the cell complex are inherited from the graph. | [Appendix B](https://arxiv.org/abs/2206.00606) |
-
-### Graph2Hypergraph
-| Name | Description | Reference |
-| --- | --- | --- |
-| KHopLifting | For each node in the graph, the algorithm finds the set of nodes that are at most k connections away from the initial node. This set is then used to create an hyperedge. The process is repeated for all nodes in the graph. | [Section 3.4](https://ieeexplore.ieee.org/abstract/document/9264674) |
-| KNearestNeighborsLifting | For each node in the graph, the method finds the k nearest nodes by using the Euclidean distance between the vectors of features. The set of k nodes found is considered as an hyperedge. The proces is repeated for all nodes in the graph. | [Section 3.1](https://ieeexplore.ieee.org/abstract/document/9264674) |
-</details>
-
-<details>
-  <summary><b> Feature Liftings <b></summary>
-
-| Name                | Description                                                                 | Supported Domains |
-|---------------------|-----------------------------------------------------------------------------|-------------------|
-| ProjectionSum       | Projects r-cell features of a graph to r+1-cell structures utilizing incidence matrices \(B_{r}\). | Simplicial, Cell  |
-| ConcatenationLifting | Concatenate r-cell features to obtain r+1-cell features.                   | Simplicial        |
-
-</details>
-
-<details>
-  <summary><b> Data Transformations <b></summary>
-
-| Transform | Description | Reference |
-| --- | --- | --- |
-| Message Passing Homophily | Higher-order homophily measure for hypergraphs | [Source](https://arxiv.org/abs/2310.07684) |
-| Group Homophily | Higher-order homophily measure for hypergraphs that considers groups of predefined sizes  | [Source](https://arxiv.org/abs/2103.11818) |
-</details>
-
-## :books: Datasets
-
-### Graphs
-| Dataset | Task | Description | Reference |
-| --- | --- | --- | --- |
-| Cora | Classification | Cocitation dataset. | [Source](https://link.springer.com/article/10.1023/A:1009953814988) |
-| Citeseer | Classification | Cocitation dataset. | [Source](https://dl.acm.org/doi/10.1145/276675.276685) |
-| Pubmed | Classification | Cocitation dataset. | [Source](https://ojs.aaai.org/aimagazine/index.php/aimagazine/article/view/2157) |
-| MUTAG | Classification | Graph-level classification. | [Source](https://pubs.acs.org/doi/abs/10.1021/jm00106a046) |
-| PROTEINS | Classification | Graph-level classification. | [Source](https://academic.oup.com/bioinformatics/article/21/suppl_1/i47/202991) |
-| NCI1 | Classification | Graph-level classification. | [Source](https://ieeexplore.ieee.org/document/4053093) |
-| NCI109 | Classification | Graph-level classification. | [Source](https://arxiv.org/pdf/2007.08663) |
-| IMDB-BIN | Classification | Graph-level classification. | [Source](https://dl.acm.org/doi/10.1145/2783258.2783417) |
-| IMDB-MUL | Classification | Graph-level classification. | [Source](https://dl.acm.org/doi/10.1145/2783258.2783417) |
-| REDDIT | Classification | Graph-level classification. | [Source](https://proceedings.neurips.cc/paper_files/paper/2017/file/5dd9db5e033da9c6fb5ba83c7a7ebea9-Paper.pdf) |
-| Amazon | Classification | Heterophilic dataset. | [Source](https://arxiv.org/pdf/1205.6233) |
-| Minesweeper | Classification | Heterophilic dataset. | [Source](https://arxiv.org/pdf/2302.11640) |
-| Empire | Classification | Heterophilic dataset. | [Source](https://arxiv.org/pdf/2302.11640) |
-| Tolokers | Classification | Heterophilic dataset. | [Source](https://arxiv.org/pdf/2302.11640) |
-| US-county-demos | Regression | In turn each node attribute is used as the target label. | [Source](https://arxiv.org/pdf/2002.08274) |
-| ZINC | Regression | Graph-level regression. | [Source](https://pubs.acs.org/doi/10.1021/ci3001277) |
-
-### Hypergraphs
-| Dataset | Task | Description | Reference |
-| --- | --- | --- | --- |
-| Cora-Cocitation | Classification | Cocitation dataset. | [Source](https://proceedings.neurips.cc/paper_files/paper/2019/file/1efa39bcaec6f3900149160693694536-Paper.pdf) |
-| Citeseer-Cocitation | Classification | Cocitation dataset. | [Source](https://proceedings.neurips.cc/paper_files/paper/2019/file/1efa39bcaec6f3900149160693694536-Paper.pdf) |
-| PubMed-Cocitation | Classification | Cocitation dataset. | [Source](https://proceedings.neurips.cc/paper_files/paper/2019/file/1efa39bcaec6f3900149160693694536-Paper.pdf) |
-| Cora-Coauthorship | Classification | Cocitation dataset. | [Source](https://proceedings.neurips.cc/paper_files/paper/2019/file/1efa39bcaec6f3900149160693694536-Paper.pdf) |
-| DBLP-Coauthorship | Classification | Cocitation dataset. | [Source](https://proceedings.neurips.cc/paper_files/paper/2019/file/1efa39bcaec6f3900149160693694536-Paper.pdf) |
+    
+    Dataset only contains 1 sample:
 
 
 
-## :mag: References ##
+    
+![png](latentclique_lifting_files/latentclique_lifting_9_1.png)
+    
 
-To learn more about `TopoBenchmark`, we invite you to read the paper:
 
-```
-@article{telyatnikov2024topobenchmark,
-      title={TopoBenchmark: A Framework for Benchmarking Topological Deep Learning}, 
-      author={Lev Telyatnikov and Guillermo Bernardez and Marco Montagna and Pavlo Vasylenko and Ghada Zamzmi and Mustafa Hajij and Michael T Schaub and Nina Miolane and Simone Scardapane and Theodore Papamarkou},
-      year={2024},
-      eprint={2406.06642},
-      archivePrefix={arXiv},
-      primaryClass={cs.LG},
-      url={https://arxiv.org/abs/2406.06642}, 
+     - Graph with 8 vertices and 13 edges.
+     - Features dimensions: [1, 0]
+     - There are 0 isolated nodes.
+    
+
+
+## Loading and Applying the Lifting
+
+In this section we will instantiate the random clique lifting.
+
+For simplicial complexes creating a lifting involves creating a `SimplicialComplex` object from topomodelx and adding simplices to it using the method `add_simplices_from`. The `SimplicialComplex` class then takes care of creating all the needed matrices.
+
+Similarly to before, we can specify the transformation we want to apply through its type and id --the correxponding config files located at `/configs/transforms`.
+
+Note that the *tranform_config* dictionary generated below can contain a sequence of tranforms if it is needed.
+
+
+```python
+# Define transformation type and id
+transform_type = "liftings"
+# If the transform is a topological lifting, it should include both the type of the lifting and the identifier
+transform_id = "graph2simplicial/latentclique_lifting"
+
+# Read yaml file
+transform_config = {
+    "lifting": load_transform_config(transform_type, transform_id)
+    # other transforms (e.g. data manipulations, feature liftings) can be added here
 }
 ```
-If you find `TopoBenchmark` useful, we would appreciate if you cite us!
+
+    
+    Transform configuration for graph2simplicial/latentclique_lifting:
+    
+    {'transform_type': 'lifting',
+     'transform_name': 'LatentCliqueLifting',
+     'complex_dim': 3,
+     'preserve_edge_attr': False,
+     'signed': True,
+     'feature_lifting': 'ProjectionSum',
+     'edge_prob_mean': 0.95,
+     'edge_prob_var': 0.0004}
 
 
+We than apply the transform via our `PreProcesor`:
 
-## :mouse: Additional Details
-<details>
-<summary><b>Hierarchy of configuration files</b></summary>
 
-```
-├── configs                   <- Hydra configs
-│   ├── callbacks                <- Callbacks configs
-│   ├── dataset                  <- Dataset configs
-│   │   ├── graph                    <- Graph dataset configs
-│   │   ├── hypergraph               <- Hypergraph dataset configs
-│   │   └── simplicial               <- Simplicial dataset configs
-│   ├── debug                    <- Debugging configs
-│   ├── evaluator                <- Evaluator configs
-│   ├── experiment               <- Experiment configs
-│   ├── extras                   <- Extra utilities configs
-│   ├── hparams_search           <- Hyperparameter search configs
-│   ├── hydra                    <- Hydra configs
-│   ├── local                    <- Local configs
-│   ├── logger                   <- Logger configs
-│   ├── loss                     <- Loss function configs
-│   ├── model                    <- Model configs
-│   │   ├── cell                     <- Cell model configs
-│   │   ├── graph                    <- Graph model configs
-│   │   ├── hypergraph               <- Hypergraph model configs
-│   │   └── simplicial               <- Simplicial model configs
-│   ├── optimizer                <- Optimizer configs
-│   ├── paths                    <- Project paths configs
-│   ├── scheduler                <- Scheduler configs
-│   ├── trainer                  <- Trainer configs
-│   ├── transforms               <- Data transformation configs
-│   │   ├── data_manipulations       <- Data manipulation transforms
-│   │   ├── dataset_defaults         <- Default dataset transforms
-│   │   ├── feature_liftings         <- Feature lifting transforms
-│   │   └── liftings                 <- Lifting transforms
-│   │       ├── graph2cell               <- Graph to cell lifting transforms
-│   │       ├── graph2hypergraph         <- Graph to hypergraph lifting transforms
-│   │       ├── graph2simplicial         <- Graph to simplicial lifting transforms
-│   │       ├── graph2cell_default.yaml  <- Default graph to cell lifting config
-│   │       ├── graph2hypergraph_default.yaml <- Default graph to hypergraph lifting config
-│   │       ├── graph2simplicial_default.yaml <- Default graph to simplicial lifting config
-│   │       ├── no_lifting.yaml           <- No lifting config
-│   │       ├── custom_example.yaml       <- Custom example transform config
-│   │       └── no_transform.yaml         <- No transform config
-│   ├── wandb_sweep              <- Weights & Biases sweep configs
-│   │
-│   ├── __init__.py              <- Init file for configs module
-│   └── run.yaml               <- Main config for training
+```python
+lifted_dataset = PreProcessor(dataset, transform_config, loader.data_dir)
+describe_data(lifted_dataset)
 ```
 
+    Processing...
+    /content/challenge-icml-2024/modules/transforms/liftings/graph2simplicial/latentclique_lifting.py:72: FutureWarning: adjacency_matrix will return a scipy.sparse array instead of a matrix in Networkx 3.0.
+      adj = nx.adjacency_matrix(G).toarray()
+    Done!
 
-</details>
 
-<details>
-<summary><b> More information regarding Topological Deep Learning </b></summary>
-  
-  [Topological Graph Signal Compression](https://arxiv.org/pdf/2308.11068)
-  
-  [Architectures of Topological Deep Learning: A Survey on Topological Neural Networks](https://par.nsf.gov/servlets/purl/10477141)
-  
-  [TopoX: a suite of Python packages for machine learning on topological domains](https://arxiv.org/pdf/2402.02441)	
-</details>
+    
+    Dataset only contains 1 sample:
+
+
+
+    
+![png](latentclique_lifting_files/latentclique_lifting_14_2.png)
+    
+
+
+     - The complex has 8 0-cells.
+     - The 0-cells have features dimension 1
+     - The complex has 20 1-cells.
+     - The 1-cells have features dimension 1
+     - The complex has 24 2-cells.
+     - The 2-cells have features dimension 1
+    
+
+
+## Create and Run a Simplicial NN Model
+
+In this section a simple model is created to test that the used lifting works as intended. In this case the model uses the `up_laplacian_1` and the `down_laplacian_1` so the lifting should make sure to add them to the data.
+
+
+```python
+from modules.models.simplicial.san import SANModel
+
+model_type = "simplicial"
+model_id = "san"
+model_config = load_model_config(model_type, model_id)
+
+model = SANModel(model_config, dataset_config)
+```
+
+    
+    Model configuration for simplicial SAN:
+    
+    {'in_channels': None,
+     'hidden_channels': 32,
+     'out_channels': None,
+     'n_layers': 2,
+     'n_filters': 2,
+     'order_harmonic': 5,
+     'epsilon_harmonic': 0.1}
+
+
+
+```python
+y_hat = model(lifted_dataset.get(0))
+```
+
+If everything is correct the cell above should execute without errors.
+
+# References
+
+***
+[[1]](http://proceedings.mlr.press/v115/williamson20a/williamson20a.pdf) Williamson, Sinead A., and Mauricio Tec. "Random clique covers for graphs with local density and global sparsity." Uncertainty in Artificial Intelligence (UAI). PMLR, 2020.
+
+[[2]](https://arxiv.org/abs/2402.08871)  Papamarkou, Theodore, et al. "Position paper: Challenges and opportunities in topological deep learning." arXiv preprint arXiv:2402.08871 (2024).
+
+[[3]](https://arxiv.org/abs/2206.00606) Hajij, Mustafa, et al. "Topological deep learning: Going beyond graph data." arXiv preprint arXiv:2206.00606 (2022).
+
+[[4]](https://openreview.net/forum?id=0JsRZEGZ7L) Battiloro, Claudio, et al. "From latent graph to latent topology inference: Differentiable cell complex module." The Twelfth International Conference on Learning Representations (ICLR), 2024.
+
+[[5]](https://papers.nips.cc/paper_files/paper/2009/hash/f1b6f2857fb6d44dd73c7041e0aa0f19-Abstract.html) Teh, Yee Whye, and Dilan Görür. "Indian Buffet Processes with Power-law Behavior." Advances in neural information processing systems. 2009.
+***
+
+
+
