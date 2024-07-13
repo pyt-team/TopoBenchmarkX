@@ -804,9 +804,8 @@ def _sample_from_ibp(K, alpha, sigma, c, seed=None):
     Z = csr_matrix((data, (rowidx, colidx)), shape).todense()
 
     # delte empty cliques
-    Z = Z[np.where(Z.sum(1) > 1)[0]]
+    return Z[np.where(Z.sum(1) > 1)[0]]
 
-    return Z
 
 
 # if __name__ == "__main__":
