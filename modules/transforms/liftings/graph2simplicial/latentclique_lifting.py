@@ -167,7 +167,7 @@ class _LatentCliqueModel:
         self.num_nodes = adj.shape[0]
         mask = np.triu(np.ones((self.num_nodes, self.num_nodes)), 1)
         half_adj = np.multiply(adj, mask)
-        self.edges = np.array(np.where(half_adj == 1)).T
+        self.edges = np.array(np.where(adj == 1)).T
         self.num_edges = len(self.edges)
         self.rng = np.random.default_rng(seed)
 
@@ -205,7 +205,7 @@ class _LatentCliqueModel:
         # the clique cover matrix. With a lower prob, there will be more latent edges
         # and therefore larger cliques. The mean, var parameterization is transformed
         # to the alpha, beta parameterization of the Beta distribution.
-        self._sample_edge_prob = edge_prob_var > 0 or edge_prob_mean < 1
+        self._sample_edge_prob = edge_prob_var > 0 and edge_prob_mean < 1
         self._edge_prob_params = _get_beta_params(edge_prob_mean, edge_prob_var)
 
     def _init_Z(self):
@@ -735,6 +735,8 @@ def _get_beta_params(mean, var):
     tuple
         Tuple of the Beta distribution parameters.
     """
+    if var == 0:
+        return 1, 1
     a = mean * (mean * (1 - mean) / var - 1)
     b = a * (1 - mean) / mean
     return a, b
@@ -807,30 +809,30 @@ def _sample_from_ibp(K, alpha, sigma, c, seed=None):
     return Z
 
 
-# if __name__ == "__main__":
-#     import networkx as nx
+if __name__ == "__main__":
+    import networkx as nx
 
-#     K, alpha, sigma, c, pie = 30, 3, 0.7, 1, 1.0
-#     Z = _sample_from_ibp(K, alpha, sigma, c)
+    K, alpha, sigma, c, pie = 200, 3, 0.7, 1, 1.0
+    Z = _sample_from_ibp(K, alpha, sigma, c)
 
-#     cic = Z.T @ Z
-#     adj = np.minimum(cic - np.diag(np.diag(cic)), 1)
+    cic = Z.T @ Z
+    adj = np.minimum(cic - np.diag(np.diag(cic)), 1)
 
-#     # delete edges with prob 1 - exp(pi^)
-#     prob = np.exp(-((1 - pie) ** 2))
-#     triu_mask = np.triu(np.ones_like(adj), 1)
-#     adj = np.multiply(adj, triu_mask)
-#     adj = np.multiply(adj, np.random.binomial(1, prob, adj.shape))
-#     adj = adj + adj.T
+    # delete edges with prob 1 - exp(pi^2)
+    prob = np.exp(-((1 - pie) ** 2))
+    triu_mask = np.triu(np.ones_like(adj), 1)
+    adj = np.multiply(adj, triu_mask)
+    adj = np.multiply(adj, np.random.binomial(1, prob, adj.shape))
+    adj = adj + adj.T
 
-#     g = nx.from_numpy_matrix(adj)
-#     print("Number of edges:", g.number_of_edges())
-#     print("Number of nodes:", g.number_of_nodes())
+    g = nx.from_numpy_matrix(adj)
+    print("Number of edges:", g.number_of_edges())
+    print("Number of nodes:", g.number_of_nodes())
 
-#     # Transform to a torch geometric data object
-#     data = torch_geometric.utils.from_networkx(g)
-#     data.x = torch.ones(data.num_nodes, 1)
+    # Transform to a torch geometric data object
+    data = torch_geometric.utils.from_networkx(g)
+    data.x = torch.ones(data.num_nodes, 1)
 
-#     # Lift the topology to a cell complex
-#     lifting = LatentCliqueLifting(edge_prob_mean=0.99)
-#     complex = lifting.lift_topology(data, verbose=True)
+    # Lift the topology to a cell complex
+    lifting = LatentCliqueLifting(edge_prob_mean=0.99, edge_prob_var=0.0)
+    complex = lifting.lift_topology(data, verbose=True)
