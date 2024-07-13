@@ -46,7 +46,7 @@ class LatentCliqueLifting(Graph2SimplicialLifting):
         super().__init__(**kwargs)
         self.edge_prob_mean = edge_prob_mean
         min_var = self.edge_prob_mean * (1 - self.edge_prob_mean)
-        self.edge_prob_var = max(0, min(edge_prob_var, min_var - 1e-6))
+        self.edge_prob_var = min(edge_prob_var, 0.5 * min_var)
         self.it = it
         self.init = init
 
@@ -70,9 +70,9 @@ class LatentCliqueLifting(Graph2SimplicialLifting):
         # Make adjacency matrix from data
         N = data.num_nodes
         adj = np.zeros((N, N))
-        for i, j in data.edge_index.T:
-            adj[i, j] = 1
-            adj[j, i] = 1
+        for j in range(data.edge_index.shape[1]):
+            adj[data.edge_index[0, j], data.edge_index[1, j]] = 1
+            adj[data.edge_index[1, j], data.edge_index[0, j]] = 1
 
         # Create the latent clique model and fit using Gibbs sampling
         mod = _LatentCliqueModel(
@@ -82,12 +82,12 @@ class LatentCliqueLifting(Graph2SimplicialLifting):
             edge_prob_var=self.edge_prob_var,
         )
         it = self.it if self.it is not None else data.num_edges
-        mod.sample(sample_hypers=True, num_iters=it, do_gibbs=True, verbose=verbose)
+        mod.sample(sample_hypers=True, num_iters=it, do_gibbs=False, verbose=verbose)
 
-        # Translate fitted model to a new topology
+        # # Translate fitted model to a new topology
         cic = mod.Z.T @ mod.Z
         adj = np.minimum(cic - np.diag(np.diag(cic)), 1)
-        edges = np.array(np.where(adj)).T
+        edges = np.array(np.where(adj == 1))
         edges = torch.LongTensor(edges).to(data.edge_index.device)
         new_data = torch_geometric.data.Data(x=data.x, edge_index=edges)
         return SimplicialCliqueLifting().lift_topology(new_data)
@@ -109,9 +109,6 @@ class _LatentCliqueModel:
 
     The following properties of a Random Clique Cover model are useful to interpret the
     parameters alpha, c, and sigma.
-
-    1. The number of cliques grows as (alpha/sigma) Gamma(1 + c)/Gamma(c + sigma)
-
 
     Parameters
     ----------
@@ -168,8 +165,9 @@ class _LatentCliqueModel:
         self.init = init
         self.adj = adj
         self.num_nodes = adj.shape[0]
-        triu_mask = np.triu(np.ones_like(adj), 1)
-        self.edges = np.array(np.where(self.adj * triu_mask == 1)).T
+        mask = np.triu(np.ones((self.num_nodes, self.num_nodes)), 1)
+        half_adj = np.multiply(adj, mask)
+        self.edges = np.array(np.where(half_adj == 1)).T
         self.num_edges = len(self.edges)
         self.rng = np.random.default_rng(seed)
 
@@ -178,7 +176,6 @@ class _LatentCliqueModel:
 
         # Initialize parameters
         self._init_params()
-
         # Initialize hyperparameters
         self._init_hyperparams(edge_prob_mean, edge_prob_var)
 
@@ -739,7 +736,7 @@ def _get_beta_params(mean, var):
         Tuple of the Beta distribution parameters.
     """
     a = mean * (mean * (1 - mean) / var - 1)
-    b = (1 - mean) * (mean * (1 - mean) / var - 1)
+    b = a * (1 - mean) / mean
     return a, b
 
 
@@ -802,22 +799,28 @@ def _sample_from_ibp(K, alpha, sigma, c, seed=None):
 
     data = np.ones(len(rowidx), int)
     shape = (K, Ncols)
-    return csr_matrix((data, (rowidx, colidx)), shape)
+    Z = csr_matrix((data, (rowidx, colidx)), shape).todense()
+
+    # delte empty cliques
+    Z = Z[np.where(Z.sum(1) > 1)[0]]
+
+    return Z
 
 
 # if __name__ == "__main__":
 #     import networkx as nx
 
-#     K, alpha, sigma, c, pie = 30, 3, 0.7, 5, 1.0
+#     K, alpha, sigma, c, pie = 30, 3, 0.7, 1, 1.0
 #     Z = _sample_from_ibp(K, alpha, sigma, c)
 
-#     cic = (Z.transpose() @ Z).toarray()
+#     cic = Z.T @ Z
 #     adj = np.minimum(cic - np.diag(np.diag(cic)), 1)
 
 #     # delete edges with prob 1 - exp(pi^)
 #     prob = np.exp(-((1 - pie) ** 2))
 #     triu_mask = np.triu(np.ones_like(adj), 1)
-#     adj = np.random.binomial(1, prob, adj.shape) * adj * triu_mask
+#     adj = np.multiply(adj, triu_mask)
+#     adj = np.multiply(adj, np.random.binomial(1, prob, adj.shape))
 #     adj = adj + adj.T
 
 #     g = nx.from_numpy_matrix(adj)
