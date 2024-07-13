@@ -167,7 +167,7 @@ class _LatentCliqueModel:
         self.num_nodes = adj.shape[0]
         mask = np.triu(np.ones((self.num_nodes, self.num_nodes)), 1)
         half_adj = np.multiply(adj, mask)
-        self.edges = np.array(np.where(adj == 1)).T
+        self.edges = np.array(np.where(half_adj == 1)).T
         self.num_edges = len(self.edges)
         self.rng = np.random.default_rng(seed)
 
