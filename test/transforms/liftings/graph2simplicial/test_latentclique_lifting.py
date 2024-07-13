@@ -7,10 +7,13 @@ import torch
 from torch_geometric.data import Data
 
 from modules.data.utils.utils import load_manual_graph
-from modules.transforms.liftings.graph2simplicial.clique_lifting import \
-    SimplicialCliqueLifting
+from modules.transforms.liftings.graph2simplicial.clique_lifting import (
+    SimplicialCliqueLifting,
+)
 from modules.transforms.liftings.graph2simplicial.latentclique_lifting import (
-    LatentCliqueLifting, _sample_from_ibp)
+    LatentCliqueLifting,
+    _sample_from_ibp,
+)
 
 
 def create_clique_graph(num_nodes=8):
@@ -100,10 +103,8 @@ class TestLatentCliqueCoverLifting:
         G_input.add_edges_from(self.data_test_two.edge_index.t().tolist())
 
         # Edges are Undirected
-        latent_edge_set = {
-            tuple(sorted((edge))) for edge in G_from_latent_complex.edges
-        }
-        input_edge_set = {tuple(sorted((edge))) for edge in G_input.edges}
+        latent_edge_set = {tuple(sorted(edge)) for edge in G_from_latent_complex.edges}
+        input_edge_set = {tuple(sorted(edge)) for edge in G_input.edges}
 
         assert input_edge_set.issubset(
             latent_edge_set
