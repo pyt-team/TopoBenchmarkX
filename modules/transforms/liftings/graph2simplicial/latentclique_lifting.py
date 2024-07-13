@@ -1,4 +1,3 @@
-import networkx as nx
 import numpy as np
 import torch
 import torch_geometric
@@ -807,6 +806,8 @@ def _sample_from_ibp(K, alpha, sigma, c, seed=None):
 
 
 # if __name__ == "__main__":
+#     import networkx as nx
+
 #     K, alpha, sigma, c, pie = 30, 3, 0.7, 5, 1.0
 #     Z = _sample_from_ibp(K, alpha, sigma, c)
 
