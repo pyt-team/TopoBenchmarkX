@@ -46,7 +46,7 @@ class LatentCliqueLifting(Graph2SimplicialLifting):
         super().__init__(**kwargs)
         self.edge_prob_mean = edge_prob_mean
         min_var = self.edge_prob_mean * (1 - self.edge_prob_mean)
-        self.edge_prob_var = min(edge_prob_var, min_var - 1e-6)
+        self.edge_prob_var = max(0, min(edge_prob_var, min_var - 1e-6))
         self.it = it
         self.init = init
 
