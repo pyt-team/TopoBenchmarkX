@@ -69,7 +69,7 @@ def weighted_simplex(simplex: tuple) -> dict:
       simplex = tuple of vertex labels
 
     Returns:
-      dictionary mapping simplices to strictly positive topological.
+      dictionary mapping simplices to strictly positive topological weights.
 
     """
     weights = defaultdict(float)
@@ -98,7 +98,7 @@ def unit_simplex(sigma: tuple, c: float = 1.0, closure: bool = False) -> dict:
 ## From: https://stackoverflow.com/questions/42138681/faster-numpy-solution-instead-of-itertools-combinations
 @cache
 def _combs(n: int, k: int) -> np.ndarray:
-    """Faster numpy-version of itertools.combinations over the standard indest set {0, 1, ..., n}"""
+    """Faster numpy-version of itertools.combinations over the standard index set {0, 1, ..., n}"""
     if n < k:
         return np.empty(shape=(0,), dtype=int)
     a = np.ones((k, n - k + 1), dtype=int)
@@ -114,12 +114,12 @@ def _combs(n: int, k: int) -> np.ndarray:
 
 
 def downward_closure(H: list, d: int = 1, coeffs: bool = False):
-    """Constructs a simplicial complex from a hypergraph by taking its downward closure, optionally counting higher order interactions.
+    """Constructs the d-simplices of the downward closure of a hypergraph, optionally counting higher order interactions.
 
     This function implicitly converts a hypergraph into a simplicial complex by taking the downward closure of each hyperedge
     and collecting the corresponding d-simplices. Note that only the d-simplices are returned (maximal p-simplices for p < d
-    won't be included!). If coeffs = True, a n x D sparse matrix is returned whose non-zero values at index (i,j) count the number of
-    times the corresponding i-th d-simplex appeared in a j-dimensional hyperedge.
+    won't be included!). If coeffs = True, a n x D sparse matrix is returned whose (i,j) non-zero values count the number of
+    times the i-th d-simplex appeared in a j-dimensional hyperedge.
 
     The output of this function is meant to be used in conjunction with top_weights to compute topological weights.
 
@@ -145,6 +145,7 @@ def downward_closure(H: list, d: int = 1, coeffs: bool = False):
         return S
 
     ## Extract the lengths of the hyperedges and how many d-simplices we may need
+    ## NOTE: The use of hirola here speeds up the computation tremendously
     from hirola import HashTable
 
     H_sizes = np.array([len(he) for he in H])
@@ -203,7 +204,7 @@ def top_weights(simplices: np.ndarray, coeffs: sparray, normalize: bool = False)
 
 
 def vertex_counts(H: list) -> np.ndarray:
-    """Returns the number of times a"""
+    """Counts the vertex cardinalities of a set of hyperedges."""
     N = np.max([np.max(he) for he in normalize_hg(H)]) + 1
     v_counts = np.zeros(N)
     for he in normalize_hg(H):
@@ -236,7 +237,6 @@ class HypergraphHeatLifting(Hypergraph2SimplicialLifting):
         dict
             The lifted topology.
         """
-        print("Lifting to weighted simplicial complex")
 
         ## Convert incidence to simple list of hyperedges
         R, C = data.incidence_hyperedges.coalesce().indices().detach().numpy()

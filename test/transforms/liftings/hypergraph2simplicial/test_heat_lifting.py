@@ -1,8 +1,12 @@
 from collections import Counter
 
 import numpy as np
+import toponetx as tnx
+import torch
+from torch_geometric.data import Data
 
 from modules.transforms.liftings.hypergraph2simplicial.heat_lifting import (
+    HypergraphHeatLifting,
     downward_closure,
     top_weights,
     unit_simplex,
@@ -110,3 +114,49 @@ class TestHypergraphHeatLifting:
         for d in range(3):
             d_map = top_weights(*downward_closure(H, d=d, coeffs=True))
             assert np.all([np.isclose(sc_lift[s], w) for s, w in d_map.items()])
+
+    def test_lift_api(self):
+        H = [
+            (0,),
+            (0, 1),
+            (1, 3),
+            (1, 2, 3),
+            (0, 1, 2, 3),
+            (0, 1, 4),
+            (0, 1, 3),
+            (2, 5),
+            (0, 2, 5),
+            (0, 2, 4, 5),
+        ]
+        ## Testing the actual lifting API
+        lifting = HypergraphHeatLifting(complex_dim=2)
+        hg = tnx.ColoredHyperGraph()
+        hg.add_cells_from(H)
+        B = hg.incidence_matrix(0, 1).tocsr()
+        B = torch.sparse_coo_tensor(np.array(B.nonzero()), B.data, B.shape)
+
+        ## Note the only requirement for the lift is the hyperedges
+        lifted_dataset = lifting.lift_topology(Data(incidence_hyperedges=B))
+
+        assert isinstance(lifted_dataset, Data)
+        assert (
+            hasattr(lifted_dataset, "incidence_0")
+            and lifted_dataset.incidence_0.shape[1] == 6
+        )
+        assert (
+            hasattr(lifted_dataset, "incidence_1")
+            and lifted_dataset.incidence_1.shape[1] == 12
+        )
+        assert (
+            hasattr(lifted_dataset, "incidence_2")
+            and lifted_dataset.incidence_2.shape[1] == 9
+        )
+        assert (
+            hasattr(lifted_dataset, "weights_0") and len(lifted_dataset.weights_0) == 6
+        )
+        assert (
+            hasattr(lifted_dataset, "weights_1") and len(lifted_dataset.weights_1) == 12
+        )
+        assert (
+            hasattr(lifted_dataset, "weights_2") and len(lifted_dataset.weights_2) == 9
+        )
