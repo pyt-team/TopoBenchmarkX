@@ -5,4 +5,4 @@ preserve_edge_attr: False
 signed: True
 feature_lifting: ProjectionSum
 edge_prob_mean: 0.95
-edge_prob_var: 0.0004
+edge_prob_var: 0.0001
