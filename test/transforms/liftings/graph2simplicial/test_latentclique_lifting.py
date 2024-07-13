@@ -7,12 +7,8 @@ import torch
 from torch_geometric.data import Data
 
 from modules.data.utils.utils import load_manual_graph
-from modules.transforms.liftings.graph2simplicial.clique_lifting import (
-    SimplicialCliqueLifting,
-)
 from modules.transforms.liftings.graph2simplicial.latentclique_lifting import (
     LatentCliqueLifting,
-    _sample_from_ibp,
 )
 
 
@@ -39,9 +35,7 @@ def create_clique_graph(num_nodes=8):
     x = torch.ones((num_nodes, 1), dtype=torch.float)
 
     # Create the Data object
-    data = Data(x=x, edge_index=edge_index)
-
-    return data
+    return Data(x=x, edge_index=edge_index)
 
 
 class TestLatentCliqueCoverLifting:
