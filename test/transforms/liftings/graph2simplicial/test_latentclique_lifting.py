@@ -80,11 +80,9 @@ class TestLatentCliqueCoverLifting:
 
         # Find all cliques in the graphs
         cliques_latent = list(nx.find_cliques(G_from_latent_complex))
-        cliques_input = list(nx.find_cliques(G_input))
 
         # Number of cliques
         num_cliques_latent = len(cliques_latent)
-        # num_cliques_input = len(cliques_input)
 
         assert (
             num_cliques_latent == num_cliques_latent
