@@ -164,6 +164,7 @@ class _LatentCliqueModel:
         edge_prob_mean=0.9,
         edge_prob_var=0.05,
         init="edges",
+        seed=None,
     ):
         self.init = init
         self.adj = adj
@@ -171,6 +172,7 @@ class _LatentCliqueModel:
         triu_mask = np.triu(np.ones_like(adj), 1)
         self.edges = np.array(np.where(self.adj * triu_mask == 1)).T
         self.num_edges = len(self.edges)
+        self.rng = np.random.default_rng(seed)
 
         # Initialize clique cover matrix
         self._init_Z()
@@ -355,7 +357,7 @@ class _LatentCliqueModel:
             Step size for the proposal distribution, by default 0.01.
         """
         # Sample alpha
-        alpha_prop = self.alpha + step_size * np.random.randn()
+        alpha_prop = self.alpha + step_size * self.rng.normal()
         if alpha_prop > 0:
             lp_ratio = (self._alpha_params[0] - 1) * (
                 np.log(alpha_prop) - np.log(self.alpha)
@@ -364,12 +366,12 @@ class _LatentCliqueModel:
             ll_new = self.log_lik(alpha=alpha_prop, alpha_only=True)
             ll_old = self.log_lik(alpha_only=True)
             lratio = ll_new - ll_old + lp_ratio
-            r = np.log(np.random.rand())
+            r = np.log(self.rng.random())
             if r < lratio:
                 self.alpha = alpha_prop
 
         # Sample sigma
-        sigma_prop = self.sigma + 0.1 * step_size * np.random.randn()
+        sigma_prop = self.sigma + 0.1 * step_size * self.rng.normal()
         if 0 < sigma_prop < 1:
             ll_new = self.log_lik(sigma=sigma_prop)
             ll_old = self.log_lik()
@@ -380,13 +382,13 @@ class _LatentCliqueModel:
                 np.log(1 - sigma_prop) - np.log(1 - self.sigma)
             )
             lratio = ll_new - ll_old + lp_ratio
-            r = np.log(np.random.rand())
+            r = np.log(self.rng.random())
 
             if r < lratio:
                 self.sigma = sigma_prop
 
         # Sample pie
-        edge_prob_prop = self.edge_prob + 0.1 * step_size * np.random.randn()
+        edge_prob_prop = self.edge_prob + 0.1 * step_size * self.rng.normal()
         if self._sample_edge_prob and 0 < edge_prob_prop < 1:
             ll_new = self.loglikZ(pie=edge_prob_prop)
             ll_old = self.loglikZ()
@@ -397,11 +399,11 @@ class _LatentCliqueModel:
                 b - 1
             ) * (np.log(1 - edge_prob_prop) - np.log(1 - self.edge_prob))
             lratio = ll_new - ll_old + lp_ratio
-            r = np.log(np.random.rand())
+            r = np.log(self.rng.random())
             if r < lratio:
                 self.edge_prob = edge_prob_prop
 
-        c_prop = self.c + step_size * np.random.randn()
+        c_prop = self.c + step_size * self.rng.normal()
         if c_prop > -1 * self.sigma:
             ll_new = self.log_lik(c=c_prop)
             c_diff_new = c_prop + self.sigma
@@ -416,15 +418,15 @@ class _LatentCliqueModel:
             )
 
             lratio = ll_new - ll_old + lp_new - lp_old
-            r = np.log(np.random.rand())
+            r = np.log(self.rng.random())
             if r < lratio:
                 self.c = c_prop
         # Sample c
-        c_prop = self.c + step_size * np.random.randn()
+        c_prop = self.c + step_size * self.rng.normal()
 
         # Sample lamb, which is the rate for the number of cliques
         # in the Poisson distribution. It does not influence parameter learning.
-        self.lamb = np.random.gamma(1 + self.K, 1 / 2)
+        self.lamb = self.rng.gamma(1 + self.K, 1 / 2)
 
     def gibbs(self):
         """Perform Gibbs sampling step to update Z."""
@@ -449,7 +451,7 @@ class _LatentCliqueModel:
                         lp0 = np.log(prior0 + 1e-3) + ll_0
                         lp1 = np.log(prior1 + 1e-3) + ll_1
                         lp0 = lp0 - logsumexp([lp0, lp1])
-                        r = np.log(np.random.rand())
+                        r = np.log(self.rng.random())
                         if r < lp0:
                             self.Z[clique, node] = 0
                         else:
@@ -469,7 +471,7 @@ class _LatentCliqueModel:
                         lp0 = np.log(prior0 + 1e-3) + ll_0
                         lp1 = np.log(prior1 + 1e-3) + ll_1
                         lp1 = lp1 - logsumexp([lp0, lp1])
-                        r = np.log(np.random.rand())
+                        r = np.log(self.rng.random())
                         if r < lp1:
                             self.Z[clique, node] = 1
                             mk[node] += 1
@@ -542,8 +544,8 @@ class _LatentCliqueModel:
 
     def splitmerge(self):
         """Perform split-merge step to update Z."""
-        link_id = np.random.choice(self.num_edges)
-        if np.random.rand() < 0.5:
+        link_id = self.rng.choice(self.num_edges)
+        if self.rng.random() < 0.5:
             sender = self.edges[link_id][0]
             receiver = self.edges[link_id][1]
         else:
@@ -551,10 +553,10 @@ class _LatentCliqueModel:
             receiver = self.edges[link_id][0]
 
         valid_cliques_i = np.where(self.Z[:, sender] == 1)[0]
-        clique_i = np.random.choice(valid_cliques_i)
+        clique_i = self.rng.choice(valid_cliques_i)
 
         valid_cliques_j = np.where(self.Z[:, receiver] == 1)[0]
-        clique_j = np.random.choice(valid_cliques_j)
+        clique_j = self.rng.choice(valid_cliques_j)
 
         if clique_i == clique_j:
             clique_size = self.Z[clique_i].sum()
@@ -575,7 +577,7 @@ class _LatentCliqueModel:
                     if node == sender:
                         Z_prop[self.K - 1, node] = 1
 
-                        r = np.random.rand()
+                        r = self.rng.random()
                         if r < 0.5:
                             Z_prop[self.K, node] = 1
                             lpsplit = (
@@ -592,7 +594,7 @@ class _LatentCliqueModel:
                         lqsplit -= np.log(2)
                     elif node == receiver:
                         Z_prop[self.K, node] = 1
-                        r = np.random.rand()
+                        r = self.rng.random()
                         if r < 0.5:
                             Z_prop[self.K - 1, node] = 1
                             lpsplit = (
@@ -608,7 +610,7 @@ class _LatentCliqueModel:
                             )
                         lqsplit -= np.log(2)
                     else:
-                        r = np.random.rand()
+                        r = self.rng.random()
                         if r < (1 / 3):
                             Z_prop[self.K - 1, node] = 1
                             lpsplit = (
@@ -659,7 +661,7 @@ class _LatentCliqueModel:
 
                 lpsplit += np.log(self.lamb / (self.K + 1))
                 laccept = lpsplit - lqsplit + lqmerge + ll_prop - ll_old
-                r = np.log(np.random.rand())
+                r = np.log(self.rng.random())
 
                 if r < laccept:
                     self.Z = Z_prop.copy()
@@ -715,7 +717,7 @@ class _LatentCliqueModel:
                 ll_old = self.loglikZ()
 
                 laccept = lpmerge - lpsplit + lqsplit - lqmerge + ll_prop - ll_old
-                r = np.log(np.random.rand())
+                r = np.log(self.rng.random())
 
                 if r < laccept:
                     self.Z = Z_prop.copy()
@@ -742,7 +744,7 @@ def _get_beta_params(mean, var):
     return a, b
 
 
-def _sample_from_ibp(K, alpha, sigma, c):
+def _sample_from_ibp(K, alpha, sigma, c, seed=None):
     """
     Auxiliary function to sample from the Indian Buffet Process.
 
@@ -765,6 +767,8 @@ def _sample_from_ibp(K, alpha, sigma, c):
         A sparse matrix, compressed by rows, representing the clique membership matrix.
         Recover the adjacency matrix with min(Z'Z, 1).
     """
+    rng = np.random.default_rng(seed)
+
     k_seq = np.arange(K, dtype=float)
     lpp = (
         np.log(alpha)
@@ -774,7 +778,7 @@ def _sample_from_ibp(K, alpha, sigma, c):
         - gammaln(k_seq + 1.0 + c)
     )
     pp = np.exp(lpp)
-    new_nodes = np.random.poisson(pp)
+    new_nodes = rng.poisson(pp)
     Ncols = new_nodes.sum()
     node_count = np.zeros(Ncols)
 
@@ -785,7 +789,7 @@ def _sample_from_ibp(K, alpha, sigma, c):
     for n in range(K):
         for k in range(rightmost_node):
             prob_repeat = (node_count[k] - sigma) / (n + c)
-            if np.random.rand() < prob_repeat:
+            if rng.random() < prob_repeat:
                 rowidx.append(n)
                 colidx.append(k)
                 node_count[k] += 1
@@ -802,27 +806,27 @@ def _sample_from_ibp(K, alpha, sigma, c):
     return csr_matrix((data, (rowidx, colidx)), shape)
 
 
-# if __name__ == "__main__":
-#     K, alpha, sigma, c, pie = 30, 3, 0.7, 5, 1.0
-#     Z = _sample_from_ibp(K, alpha, sigma, c)
+if __name__ == "__main__":
+    K, alpha, sigma, c, pie = 30, 3, 0.7, 5, 1.0
+    Z = _sample_from_ibp(K, alpha, sigma, c)
 
-#     cic = (Z.transpose() @ Z).toarray()
-#     adj = np.minimum(cic - np.diag(np.diag(cic)), 1)
+    cic = (Z.transpose() @ Z).toarray()
+    adj = np.minimum(cic - np.diag(np.diag(cic)), 1)
 
-#     # delete edges with prob 1 - exp(pi^)
-#     prob = np.exp(-((1 - pie) ** 2))
-#     triu_mask = np.triu(np.ones_like(adj), 1)
-#     adj = np.random.binomial(1, prob, adj.shape) * adj * triu_mask
-#     adj = adj + adj.T
+    # delete edges with prob 1 - exp(pi^)
+    prob = np.exp(-((1 - pie) ** 2))
+    triu_mask = np.triu(np.ones_like(adj), 1)
+    adj = np.random.binomial(1, prob, adj.shape) * adj * triu_mask
+    adj = adj + adj.T
 
-#     g = nx.from_numpy_matrix(adj)
-#     print("Number of edges:", g.number_of_edges())
-#     print("Number of nodes:", g.number_of_nodes())
+    g = nx.from_numpy_matrix(adj)
+    print("Number of edges:", g.number_of_edges())
+    print("Number of nodes:", g.number_of_nodes())
 
-#     # Transform to a torch geometric data object
-#     data = torch_geometric.utils.from_networkx(g)
-#     data.x = torch.ones(data.num_nodes, 1)
+    # Transform to a torch geometric data object
+    data = torch_geometric.utils.from_networkx(g)
+    data.x = torch.ones(data.num_nodes, 1)
 
-#     # Lift the topology to a cell complex
-#     lifting = LatentCliqueLifting(edge_prob_mean=0.99)
-#     complex = lifting.lift_topology(data, verbose=True)
+    # Lift the topology to a cell complex
+    lifting = LatentCliqueLifting(edge_prob_mean=0.99)
+    complex = lifting.lift_topology(data, verbose=True)
