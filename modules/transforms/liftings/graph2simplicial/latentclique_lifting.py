@@ -809,30 +809,30 @@ def _sample_from_ibp(K, alpha, sigma, c, seed=None):
     return Z
 
 
-if __name__ == "__main__":
-    import networkx as nx
+# if __name__ == "__main__":
+#     import networkx as nx
 
-    K, alpha, sigma, c, pie = 200, 3, 0.7, 1, 1.0
-    Z = _sample_from_ibp(K, alpha, sigma, c)
+#     K, alpha, sigma, c, pie = 200, 3, 0.7, 1, 1.0
+#     Z = _sample_from_ibp(K, alpha, sigma, c)
 
-    cic = Z.T @ Z
-    adj = np.minimum(cic - np.diag(np.diag(cic)), 1)
+#     cic = Z.T @ Z
+#     adj = np.minimum(cic - np.diag(np.diag(cic)), 1)
 
-    # delete edges with prob 1 - exp(pi^2)
-    prob = np.exp(-((1 - pie) ** 2))
-    triu_mask = np.triu(np.ones_like(adj), 1)
-    adj = np.multiply(adj, triu_mask)
-    adj = np.multiply(adj, np.random.binomial(1, prob, adj.shape))
-    adj = adj + adj.T
+#     # delete edges with prob 1 - exp(pi^2)
+#     prob = np.exp(-((1 - pie) ** 2))
+#     triu_mask = np.triu(np.ones_like(adj), 1)
+#     adj = np.multiply(adj, triu_mask)
+#     adj = np.multiply(adj, np.random.binomial(1, prob, adj.shape))
+#     adj = adj + adj.T
 
-    g = nx.from_numpy_matrix(adj)
-    print("Number of edges:", g.number_of_edges())
-    print("Number of nodes:", g.number_of_nodes())
+#     g = nx.from_numpy_matrix(adj)
+#     print("Number of edges:", g.number_of_edges())
+#     print("Number of nodes:", g.number_of_nodes())
 
-    # Transform to a torch geometric data object
-    data = torch_geometric.utils.from_networkx(g)
-    data.x = torch.ones(data.num_nodes, 1)
+#     # Transform to a torch geometric data object
+#     data = torch_geometric.utils.from_networkx(g)
+#     data.x = torch.ones(data.num_nodes, 1)
 
-    # Lift the topology to a cell complex
-    lifting = LatentCliqueLifting(edge_prob_mean=0.99, edge_prob_var=0.0)
-    complex = lifting.lift_topology(data, verbose=True)
+#     # Lift the topology to a cell complex
+#     lifting = LatentCliqueLifting(edge_prob_mean=0.99, edge_prob_var=0.0)
+#     complex = lifting.lift_topology(data, verbose=True)
