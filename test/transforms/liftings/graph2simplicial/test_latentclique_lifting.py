@@ -84,7 +84,7 @@ class TestLatentCliqueCoverLifting:
 
         # Number of cliques
         num_cliques_latent = len(cliques_latent)
-        num_cliques_input = len(cliques_input)
+        # num_cliques_input = len(cliques_input)
 
         assert (
             num_cliques_latent == num_cliques_latent
