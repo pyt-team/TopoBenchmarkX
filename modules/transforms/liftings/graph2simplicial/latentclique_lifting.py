@@ -68,9 +68,14 @@ class LatentCliqueLifting(Graph2SimplicialLifting):
         dict
             The lifted topology.
         """
-        G = self._generate_graph_from_data(data)
-        adj = nx.adjacency_matrix(G).toarray()
+        # Make adjacency matrix from data
+        N = data.num_nodes
+        adj = np.zeros((N, N))
+        for i, j in data.edge_index.T:
+            adj[i, j] = 1
+            adj[j, i] = 1
 
+        # Create the latent clique model and fit using Gibbs sampling
         mod = _LatentCliqueModel(
             adj,
             init=self.init,
@@ -80,11 +85,11 @@ class LatentCliqueLifting(Graph2SimplicialLifting):
         it = self.it if self.it is not None else data.num_edges
         mod.sample(sample_hypers=True, num_iters=it, do_gibbs=True, verbose=verbose)
 
-        adj = mod.Z.T @ mod.Z
-        adj = np.minimum(adj - np.diag(np.diag(adj)), 1)
-        g = nx.from_numpy_matrix(adj)
-        edges = torch.LongTensor(list(g.edges()), device=data.edge_index.device).T
-        edges = torch.cat([edges, edges.flip(0)], dim=1)
+        # Translate fitted model to a new topology
+        cic = mod.Z.T @ mod.Z
+        adj = np.minimum(cic - np.diag(np.diag(cic)), 1)
+        edges = np.array(np.where(adj)).T
+        edges = torch.LongTensor(edges).to(data.edge_index.device)
         new_data = torch_geometric.data.Data(x=data.x, edge_index=edges)
         return SimplicialCliqueLifting().lift_topology(new_data)
 
@@ -115,7 +120,7 @@ class _LatentCliqueModel:
         Adjacency matrix of the input graph.
     edge_prob_mean : float
         Mean of the prior distribution of pie ~ Beta
-        where edge_prob_mean must be in (0, 1]. 
+        where edge_prob_mean must be in (0, 1].
         When edge_prob_var is one, the value of edge_prob is fixed and not sampled.
     edge_prob_var : float
         Uncertainty of the prior distribution of pie ~ Beta(a, b)
@@ -147,7 +152,7 @@ class _LatentCliqueModel:
         Probability of an edge observation.
     lamb : float
         Rate parameter of the Poisson distribution for the number of cliques.
-        It does not influence parameter learning. But is sampled for the 
+        It does not influence parameter learning. But is sampled for the
         likelihood computation.
 
     **Note**: The values of (K, N) are used interchanged from the paper notation.
@@ -170,14 +175,26 @@ class _LatentCliqueModel:
         # Initialize clique cover matrix
         self._init_Z()
 
+        # Initialize parameters
+        self._init_params()
+
+        # Initialize hyperparameters
+        self._init_hyperparams(edge_prob_mean, edge_prob_var)
+
         # Current number of clusters
         self.K = self.Z.shape[0]
 
-        # Initialize parameters
+    def _init_params(self):
+        """Initialize the parameters of the model."""
         self.alpha = 1.0
         self.sigma = 0.5
         self.c = 0.5
-        self.edge_prob = edge_prob_mean 
+        self.edge_prob = 0.98
+
+    def _init_hyperparams(self, edge_prob_mean, edge_prob_var):
+        # Validate the edge probability parameters
+        assert 0 < edge_prob_mean <= 1
+        assert edge_prob_var >= 0
 
         # Parameter prior hyper-parameters
         # The priors of alpha, sigma, c and uninformative, so their are set to
@@ -376,26 +393,32 @@ class _LatentCliqueModel:
             a = self._edge_prob_params[0]
             b = self._edge_prob_params[1]
             # lp ratio comes from a beta distribution
-            lp_ratio = (a - 1) * (
-                np.log(edge_prob_prop) - np.log(self.edge_prob)
-            ) + (b - 1) * (np.log(1 - edge_prob_prop) - np.log(1 - self.edge_prob))
+            lp_ratio = (a - 1) * (np.log(edge_prob_prop) - np.log(self.edge_prob)) + (
+                b - 1
+            ) * (np.log(1 - edge_prob_prop) - np.log(1 - self.edge_prob))
             lratio = ll_new - ll_old + lp_ratio
             r = np.log(np.random.rand())
             if r < lratio:
                 self.edge_prob = edge_prob_prop
 
         c_prop = self.c + step_size * np.random.randn()
-        if c_prop > -self.sigma:
-            lp_ratio = (self._c_params[0] - 1) * (
-                np.log(c_prop) - np.log(self.c)
-            ) + self._c_params[1] * (self.c - c_prop)
+        if c_prop > -1 * self.sigma:
             ll_new = self.log_lik(c=c_prop)
+            c_diff_new = c_prop + self.sigma
+            lp_new = stats.gamma.logpdf(
+                c_diff_new, self._c_params[0], scale=1 / self._c_params[1]
+            )
+
             ll_old = self.log_lik()
-            lratio = ll_new - ll_old + lp_ratio
+            c_diff_old = self.c + self.sigma
+            lp_old = stats.gamma.logpdf(
+                c_diff_old, self._c_params[0], scale=1 / self._c_params[1]
+            )
+
+            lratio = ll_new - ll_old + lp_new - lp_old
             r = np.log(np.random.rand())
             if r < lratio:
                 self.c = c_prop
-
         # Sample c
         c_prop = self.c + step_size * np.random.randn()
 
@@ -789,7 +812,7 @@ if __name__ == "__main__":
     adj = np.minimum(cic - np.diag(np.diag(cic)), 1)
 
     # delete edges with prob 1 - exp(pi^)
-    prob = np.exp(-(1 - pie)**2)
+    prob = np.exp(-((1 - pie) ** 2))
     triu_mask = np.triu(np.ones_like(adj), 1)
     adj = np.random.binomial(1, prob, adj.shape) * adj * triu_mask
     adj = adj + adj.T
