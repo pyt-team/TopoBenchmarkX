@@ -73,15 +73,6 @@ class TBXModel(LightningModule):
         self.metric_collector_val = []
         self.metric_collector_val2 = []
         self.metric_collector_test = []
-        print("&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&")
-        print("\nFull model structure:")
-        for name, module in self.named_children():
-            print(f"\nModule {name}:")
-            print(module)
-            # Print submodules if they exist
-            for subname, submodule in module.named_children():
-                print(f"  Submodule {subname}:")
-                print(f"    {submodule}")
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(backbone={self.backbone}, readout={self.readout}, loss={self.loss}, feature_encoder={self.feature_encoder})"
@@ -119,8 +110,6 @@ class TBXModel(LightningModule):
 
         # Domain model
         model_out = self.forward(batch)
-        print(f"modelout {model_out}")
-        input()
 
         # Readout
         if self.readout is not None:
@@ -150,98 +139,6 @@ class TBXModel(LightningModule):
         torch.Tensor
             A tensor of losses between model predictions and targets.
         """
-        print(batch)
-        x, y = batch.x, batch.y
-
-        self.state_str = "Training"
-        model_out = self.model_step(batch)
-
-        # Debug loss computation
-        print("Model output keys:", model_out.keys())
-        # for key, value in model_out.items():
-        #     if isinstance(value, torch.Tensor):
-        #         print(f"{key} magnitude:", torch.norm(value))
-        #         print(f"{key} requires_grad:", value.requires_grad)
-        #         print(f"{key} shape:", value.shape)
-
-        print("loss", model_out["loss"])
-        print("logits magnitude", torch.norm(model_out["logits"]))
-        print("logits shape", model_out["logits"].shape)
-        print("labels magnitude", torch.norm(model_out["labels"]))
-        print("labels shape", model_out["labels"].shape)
-        print("x_0 magnitude", torch.norm(model_out["x_0"]))
-        print("x_0 shape", model_out["x_0"].shape)
-
-        print("Target magnitude:", torch.norm(y))
-        print("Target shape:", y.shape)
-
-        # Update and log metrics
-        self.log(
-            "train/loss",
-            model_out["loss"],
-            on_step=False,
-            on_epoch=True,
-            prog_bar=True,
-            batch_size=1,
-        )
-
-        # Return loss for backpropagation step
-        loss = model_out["loss"]
-
-        # Register hooks to track what happens to the loss
-        def backward_hook(grad):
-            print("Loss backward hook called!")
-            print(
-                "Gradient magnitude in hook:",
-                torch.norm(grad) if grad is not None else None,
-            )
-            return grad
-
-        loss.register_hook(backward_hook)
-
-        # Also register hooks on the parameters to see if they receive gradients
-        for name, param in self.named_parameters():
-
-            def param_hook(grad, name=name):
-                print(
-                    f"Parameter {name} received gradient with magnitude:",
-                    torch.norm(grad) if grad is not None else None,
-                )
-                return grad
-
-            param.register_hook(lambda grad, name=name: param_hook(grad, name))
-
-        print("About to return loss from training_step")
-        print("Loss value:", loss.item())
-        print("Loss requires_grad:", loss.requires_grad)
-        print("Loss grad_fn:", loss.grad_fn)
-
-        # Debug intermediate tensors
-        def hook_fn(name):
-            def hook(grad):
-                print(
-                    f"Gradient at {name}:",
-                    torch.norm(grad) if grad is not None else None,
-                )
-                return grad
-
-            return hook
-
-        # Register hooks on intermediate tensors
-        if isinstance(model_out["logits"], torch.Tensor):
-            model_out["logits"].register_hook(hook_fn("logits"))
-        if isinstance(model_out["x_0"], torch.Tensor):
-            model_out["x_0"].register_hook(hook_fn("x_0"))
-
-        loss = model_out["loss"]
-        print("About to return loss from training_step")
-        print("Loss value:", loss.item())
-        print("Loss requires_grad:", loss.requires_grad)
-        print("Loss grad_fn:", loss.grad_fn)
-
-        input()
-        return loss
-
         self.state_str = "Training"
         model_out = self.model_step(batch)
 

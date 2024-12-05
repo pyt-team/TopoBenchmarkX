@@ -51,7 +51,7 @@ class AbstractWrapper(ABC, torch.nn.Module):
             Dictionary containing the model output.
         """
         model_out = self.forward(batch)
-        model_out = self.residual_connection(model_out=model_out, batch=batch)
+        # model_out = self.residual_connection(model_out=model_out, batch=batch)
         return model_out
 
     def residual_connection(self, model_out, batch):

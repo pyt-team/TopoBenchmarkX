@@ -83,11 +83,6 @@ class GCNext(nn.Module):
         # idk this
         self.dyna_idx = dyna_idx
 
-        print("################################")
-        print("GCNext structure:")
-        for name, module in self.named_children():
-            print(f"Module {name}:", module)
-
     def reset_parameters(self):
         """Idk."""
         nn.init.xavier_uniform_(self.motion_fc_out.weight, gain=1e-8)
@@ -109,9 +104,6 @@ class GCNext(nn.Module):
             Output node features.
         """
         # Debug input at top level
-        print("GCNext input magnitude:", torch.norm(x))
-        print("GCNext input requires_grad:", x.requires_grad)
-        print("GCNext input grad_fn:", x.grad_fn)
 
         tau = 1
 
@@ -132,18 +124,18 @@ class GCNext(nn.Module):
         # Helps learn initial feature representations
         # Applied before the graph convolution layers
 
-        # if self.temporal_fc_in:
-        #     motion_feats = self.arr0(motion_input)
-        #     # Transform across time
-        #     motion_feats = self.motion_fc_in(motion_feats)
-        # else:
-        #     # Transform across features (66,66) with temporal weighting
-        #     motion_feats = self.motion_fc_in(motion_input)
-        #     motion_feats = self.arr0(motion_feats)  # now its (bs, 66, 50)
-        #     motion_feats = torch.einsum(
-        #         "bvt,tj->bvj", motion_feats, self.in_weight
-        #     )
-        motion_feats = motion_input
+        if self.temporal_fc_in:
+            motion_feats = self.arr0(motion_input)
+            # Transform across time
+            motion_feats = self.motion_fc_in(motion_feats)
+        else:
+            # Transform across features (66,66) with temporal weighting
+            motion_feats = self.motion_fc_in(motion_input)
+            motion_feats = self.arr0(motion_feats)  # now its (bs, 66, 50)
+            motion_feats = torch.einsum(
+                "bvt,tj->bvj", motion_feats, self.in_weight
+            )
+        # motion_feats = motion_input
 
         # Shape of motion_feats is now (batch_size, 66, 50)
         # Reshape to be batch 3D blocks (bs, 22, 3, 50)
@@ -158,44 +150,24 @@ class GCNext(nn.Module):
             motion_feats = self.dynamic_layers.layers[i](
                 motion_feats, self.mlp, if_make_dynamic, tau
             )
-            # Debug after each layer
-            print(f"Layer {i} output magnitude:", torch.norm(motion_feats))
-            print(f"Layer {i} grad_fn:", motion_feats.grad_fn)
 
-        # for i in range(len(self.dynamic_layers.layers)):
-        #     if_make_dynamic = self.dyna_idx[0] <= i <= self.dyna_idx[1]
-        #     motion_feats = self.dynamic_layers.layers[i](
-        #         motion_feats, self.mlp, if_make_dynamic, tau
-        #     )
+        # Reshape to be batch old way (bs, 22*3, 50)
+        motion_feats = motion_feats.reshape(
+            batch_size, self.n_nodes_per_frame, self.n_frames
+        )
 
-        # # Reshape to be batch old way (bs, 22*3, 50)
-        # motion_feats = motion_feats.reshape(
-        #     batch_size, self.n_nodes_per_frame, self.n_frames
-        # )
-
-        # if self.temporal_fc_out:
-        #     motion_feats = self.motion_fc_out(motion_feats)
-        #     motion_feats = self.arr1(motion_feats)
-        # else:
-        #     motion_feats = self.arr1(motion_feats)
-        #     motion_feats = self.motion_fc_out(motion_feats)
-        #     motion_feats = torch.einsum(
-        #         "btv,tj->bjv", motion_feats, self.out_weight
-        #     )
+        if self.temporal_fc_out:
+            motion_feats = self.motion_fc_out(motion_feats)
+            motion_feats = self.arr1(motion_feats)
+        else:
+            motion_feats = self.arr1(motion_feats)
+            motion_feats = self.motion_fc_out(motion_feats)
+            motion_feats = torch.einsum(
+                "btv,tj->bjv", motion_feats, self.out_weight
+            )
 
         # Reshape back to torch_geometric format [batch*num_nodes, features]
         motion_feats = motion_feats.reshape(-1, 1)
-        print("Final output magnitude:", torch.norm(motion_feats))
-        print("Final output grad_fn:", motion_feats.grad_fn)
-
-        def final_hook(grad):
-            print(
-                "Gradient at GCNext output:",
-                torch.norm(grad) if grad is not None else None,
-            )
-            return grad
-
-        motion_feats.register_hook(final_hook)
 
         return motion_feats
 
@@ -326,45 +298,8 @@ class GCBlock(nn.Module):
         torch.Tensor
             Updated node features.
         """
-        # Debug input
-        print("Input magnitude:", torch.norm(x))
-        print("Input requires_grad:", x.requires_grad)
 
         x1 = self.skeletal_conv(x)
-
-        # Register hooks to track gradient flow
-        def hook_fn(name):
-            def hook(grad):
-                print(
-                    f"******************GCBlock {name} gradient:",
-                    torch.norm(grad) if grad is not None else None,
-                )
-                return grad
-
-            return hook
-
-        x.register_hook(hook_fn("input"))
-        x1.register_hook(hook_fn("x1"))
-
-        # Debug intermediate values
-        print("******************")
-        print("GCBlock input magnitude:", torch.norm(x))
-        print("GCBlock x1 magnitude:", torch.norm(x1))
-        print("GCBlock input requires_grad:", x.requires_grad)
-        print("GCBlock x1 requires_grad:", x1.requires_grad)
-        print("GCBlock input grad_fn:", x.grad_fn)
-        print("GCBlock x1 grad_fn:", x1.grad_fn)
-
-        return x1
-
-        # Apply different convolution types
-        x1 = self.skeletal_conv(x)
-
-        print("x1 magnitude:", torch.norm(x1))
-        print("x1 requires_grad:", x1.requires_grad)
-
-        return x1
-
         x2 = self.temporal_conv(x)
         x3 = self.coordinate_conv(x)
         x4 = self.temp_joint_conv(x)
@@ -538,71 +473,9 @@ class SkeletalConvolution(nn.Module):
             Features after spatial convolution with skeleton mask.
         """
 
-        masked_weights = self.weights.mul(self.skl_mask)
-
-        # Debug gradient flow through each operation
-        def weight_hook(grad):
-            print("Weight gradient in backward:", torch.norm(grad))
-            return grad
-
-        def masked_hook(grad):
-            print("Masked weights gradient in backward:", torch.norm(grad))
-            return grad
-
-        def output_hook(grad):
-            print("Output gradient in backward:", torch.norm(grad))
-            return grad
-
-        self.weights.register_hook(weight_hook)
-        masked_weights.register_hook(masked_hook)
-        output = torch.einsum("vj, bjct->bvct", masked_weights, x)
-        output.register_hook(output_hook)
-
-        return output
-
-        # Debug each step
-        print("weights grad_fn:", self.weights.grad_fn)
-
-        # Register hooks to track gradient flow
-        self.weights.register_hook(
-            lambda grad: print(
-                "Weight gradient:",
-                torch.norm(grad) if grad is not None else None,
-            )
-        )
-
-        masked_weights = self.weights.mul(self.skl_mask)
-        masked_weights.register_hook(
-            lambda grad: print(
-                "Masked weights gradient:",
-                torch.norm(grad) if grad is not None else None,
-            )
-        )
-
-        output = torch.einsum("vj, bjct->bvct", masked_weights, x)
-        output.register_hook(
-            lambda grad: print(
-                "Output gradient:",
-                torch.norm(grad) if grad is not None else None,
-            )
-        )
-
-        return output
-
-        self.masked_weights = self.weights.mul(self.skl_mask)  # (22,22)
-        # print("Unique values in masked_weights:", torch.unique(masked_weights))
-        # print("Sum of masked_weights:", torch.sum(masked_weights))
-
-        print("Gradient exists:", self.weights.grad is not None)
-        if self.weights.grad is not None:
-            print("Gradient magnitude:", torch.norm(self.weights.grad))
-
-        # # Debug gradients
-        # self.masked_weights.register_hook(lambda grad: print("Gradient at masked_weights:", torch.norm(grad)))
-        # self.weights.register_hook(lambda grad: print("Gradient at weights:", torch.norm(grad)))
-
+        masked_weights = self.weights.mul(self.skl_mask)  # (22,22)
         # (22,22) x (batch,22,3,50) -> (batch,22,3,50)
-        return torch.einsum("vj, bjct->bvct", self.masked_weights, x)
+        return torch.einsum("vj, bjct->bvct", masked_weights, x)
 
 
 class TemporalConvolution(nn.Module):
