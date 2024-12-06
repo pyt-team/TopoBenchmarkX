@@ -50,7 +50,7 @@ class H36MDataset(OnDiskDataset):
 
     RAW_FILE_NAMES: ClassVar = {}
 
-    SUBJ_NAMES: ClassVar = ["S1", "S5", "S6", "S7", "S8", "S9"]
+    SUBJ_NAMES: ClassVar = ["S1", "S5", "S6", "S7", "S8", "S9", "S11"]
     VAL_SUBJ: ClassVar = "S11"
     TEST_SUBJ: ClassVar = "S5"
     N_FRAMES: ClassVar = 50
@@ -126,7 +126,9 @@ class H36MDataset(OnDiskDataset):
             elif subject in self.SUBJ_NAMES:
                 train_idx.append(idx)
             else:
-                print(f"AAAAAAAAAAAA unknown subject {filename}")
+                raise Exception(
+                    f"Subject not found! <subject={subject}> <filename={filename}"
+                )
 
         # Convert to numpy arrays
         split_idx = {
@@ -216,49 +218,9 @@ class H36MDataset(OnDiskDataset):
         Data
             The loaded graph.
         """
-        # print("MAKING IT HERE>!>>!>!>!>")
-        # print(idx)
-
-        # self.cursor.execute("SELECT idx FROM data ORDER BY idx LIMIT 5")
-        # indices = self.cursor.fetchall()
-        # print("First 5 indices in database:", indices)
-
         # Query the database to get the filename for this index
         self.cursor.execute("SELECT file_name FROM data WHERE idx = ?", (idx,))
         result = self.cursor.fetchone()
-        # print(result)
-
-        # # Debug the query directly
-        # self.cursor.execute("SELECT COUNT(*) FROM data WHERE idx = ?", (idx,))
-        # count = self.cursor.fetchone()
-        # print(f"Number of records with idx {idx}:", count[0])
-
-        # # Show actual data for first few rows
-        # self.cursor.execute("SELECT * FROM data LIMIT 5")
-        # rows = self.cursor.fetchall()
-        # print("First 5 complete rows:", rows)
-
-        # # Check if there's a type mismatch
-        # print("Type of idx parameter:", type(idx))
-        # self.cursor.execute("SELECT typeof(idx) FROM data LIMIT 1")
-        # idx_type = self.cursor.fetchone()
-        # print("Database idx type:", idx_type)
-
-        # # Try different query formats
-        # self.cursor.execute("SELECT * FROM data WHERE idx = ? LIMIT 1", (int(idx),))
-        # result1 = self.cursor.fetchone()
-        # print("Query with cast to int:", result1)
-
-        # self.cursor.execute("SELECT * FROM data WHERE idx = ? LIMIT 1", (str(idx),))
-        # result2 = self.cursor.fetchone()
-        # print("Query with cast to str:", result2)
-
-        # if result is None:
-        #     # More debug info
-        #     self.cursor.execute("SELECT MIN(idx), MAX(idx) FROM data")
-        #     min_max = self.cursor.fetchone()
-        #     print(f"Database index range: {min_max}")
-        #     raise IndexError(f"No data found for index {idx}")
 
         if result is None:
             raise IndexError(f"No data found for index {idx}")
@@ -266,21 +228,25 @@ class H36MDataset(OnDiskDataset):
         filename = result[0]
         filepath = os.path.join(self.processed_dir, filename)
 
+        # Add train/val/test mask to data object.
+        # This probably isn't the best place to do it.
         data = torch.load(filepath, weights_only=False)
+
+        n_nodes = data.x.shape[0]
         if idx in self.train_idx:
-            data.train_mask = torch.Tensor([1]).long()
-            data.val_mask = torch.Tensor([0]).long()
-            data.test_mask = torch.Tensor([0]).long()
+            data.train_mask = torch.ones(n_nodes).long()
+            data.val_mask = torch.zeros(n_nodes).long()
+            data.test_mask = torch.zeros(n_nodes).long()
 
         if idx in self.val_idx:
-            data.train_mask = torch.Tensor([0]).long()
-            data.val_mask = torch.Tensor([1]).long()
-            data.test_mask = torch.Tensor([0]).long()
+            data.train_mask = torch.zeros(n_nodes).long()
+            data.val_mask = torch.ones(n_nodes).long()
+            data.test_mask = torch.zeros(n_nodes).long()
 
         if idx in self.test_idx:
-            data.train_mask = torch.Tensor([0]).long()
-            data.val_mask = torch.Tensor([0]).long()
-            data.test_mask = torch.Tensor([1]).long()
+            data.train_mask = torch.zeros(n_nodes).long()
+            data.val_mask = torch.zeros(n_nodes).long()
+            data.test_mask = torch.ones(n_nodes).long()
 
         return data
 
@@ -350,12 +316,6 @@ class H36MDataset(OnDiskDataset):
         """
         print("Loading and processing data...")
 
-        # We must do this piecemeal due to memory constraints! This big.
-        # if train:
-        #     subj_names = ["S1", "S6", "S7", "S8", "S9"]
-        # else:
-        #     subj_names = ["S5"]
-
         for subj_name in self.SUBJ_NAMES:
             print(f"Processing subject {subj_name}")
             # Step 1: extract the data
@@ -383,25 +343,10 @@ class H36MDataset(OnDiskDataset):
                 )
             print(f"\tDone with {subj_name}.")
 
-            # OLD ATTEMPT:
-            # # Step 4: collate the graphs (using InMemoryDataset)
-            # print(f"\tCollating {subj_name}...")
-            # self.data, self.slices = self.collate(motions)
-            # self._data_list = None  # Reset cache.
-
-            # # Step 5: save processed data to separate files due to MEMORY ISSUES
-            # print(f"\tSaving {subj_name}... (might take a hot sec)")
-
-            # fs.torch_save(
-            #     (self._data.to_dict(), self.slices, {}, self._data.__class__),
-            #     self.get_processed_path_for_subj(subj_name),
-            # )
-
-        # Step 4: Create database.
-        print("Creating database...")
-        self._create_database()
-
-        print("Done processing.")
+            # Step 4: Create database.
+            print("Creating database...")
+            self._create_database()
+            print("Done processing.")
 
     def _create_database(self) -> None:
         """Create the SQLite database with metadata for all saved .pt files."""
@@ -454,14 +399,17 @@ class H36MDataset(OnDiskDataset):
         list[Data]
             List of graph objects.
         """
-        # this implementation is kinda sketchy but we ignore...
-        skl = H36MSkeleton()
-        time_edges = skl.generate_time_edges(self.N_FRAMES)
+        # Step 1: Create edges. These are the same for all graphs.
+        #       We want a superset of all possible edge indices
+        #       so the model can choose which to care about.
+        # For efficiency, though, perhaps could be good to prune this...
+        # TODO: Make which edges are created a parameter to pass into config!
+        fully_connected_edges = torch.combinations(
+            torch.arange(self.N_FRAMES * 22 * 3), r=2
+        ).t()  # Shape: [2, num_edges] where num_edges = (n*(n-1))/2
+        empty_edges = torch.zeros((2, 0), dtype=torch.long)  # Shape: [2, 0]
 
-        # print(adj_mat)
-        # print(edges)
-
-        # Step 3: turn them into torch_geometric.data Data objects
+        # Step 2: turn them into torch_geometric.data Data objects
         print("\tConverting to graph objects...")
         motions = []
 
@@ -491,7 +439,7 @@ class H36MDataset(OnDiskDataset):
             #   ]
             # just read this in order!
 
-            # Step 1: Flatten motion_matrix; node for each time, joint, channel combo.
+            # Step 3: Flatten motion_matrix; node for each time, joint, channel combo.
             flat_input = torch.reshape(
                 input_motion_matrix, (-1,)
             )  # shape 50*22*3 = 3300
@@ -499,43 +447,11 @@ class H36MDataset(OnDiskDataset):
                 target_motion_matrix, (-1,)
             )  # shape 50*22*3 = 3300
 
-            # Step 2: Create superset of all possible edge indices.
-
-            # Edges according to skeleton bones.
-            # TODO Do we want self-loops?
-            # t, j, c = motion_matrix.shape
-            # small_bones = [(n1 * c, n2 * c) for (n1, n2) in edges]
-            # all_channel_bones = [
-            #     (n1 + cc, n2 + cc)
-            #     for (n1, n2) in small_bones
-            #     for cc in range(c)
-            # ]
-            all_channel_all_time_bones = []
-            #     (n1 + tt * (j * c), n2 + tt * (j * c))
-            #     for (n1, n2) in all_channel_bones
-            #     for tt in range(t)
-            # ]
-
-            # TODO Edges according to time.
-
-            # TODO Edges according to channel.
-            channel_edges = []
-
-            # TODO Edges last.
-            space_channel_edges = []
-
-            # edge_index = [
-            #     all_channel_all_time_bones
-            #     + time_edges
-            #     + channel_edges
-            #     + space_channel_edges
-            # ]
-
-            # Step 3: Create graph Data objects.
+            # Step 4: Create fully-conencted graph Data objects.
             motion_graph = Data(
                 x=flat_input.unsqueeze(1),
                 y=flat_target,
-                edge_index=time_edges,
+                edge_index=empty_edges,
             )
             motions.append(motion_graph)
         return motions
@@ -662,50 +578,87 @@ class H36MDataset(OnDiskDataset):
 
 
 class H36MSkeleton:
-    r"""Dataset class for Human3.6M Skeleton.
+    r"""Class for connections in Human3.6M Skeleton.
 
     Attributes
     ----------
     NUM_JOINTS (int): Number of joints in skeleton.
     NUM_CHANNELS (int): Number of channels per joint.
     USED_JOINT_INDICES (np.array[np.int64]): Numpy array containing relevant joint indices.
+    BONE_LINKS (list[tup[int]]): ONE-INDEXED list defining bone connections.
+    LIMB_LINKS (list[list[int]]): List defining limbs.
     """
 
     NUM_JOINTS: ClassVar = 22
     NUM_CHANNELS: ClassVar = 3
 
+    # Labels from here: https://github.com/qxcv/pose-prediction/blob/master/H36M-NOTES.md
     USED_JOINT_INDICES: ClassVar = np.array(
         [
-            2,
-            3,
-            4,
-            5,
-            7,
-            8,
-            9,
-            10,
-            12,
-            13,
-            14,
-            15,
-            17,
-            18,
-            19,
-            21,
-            22,
-            25,
-            26,
-            27,
-            29,
-            30,
+            2,  # RHip 1
+            3,  # RKnee 2
+            4,  # RAnkle 3
+            5,  # RFoot 4
+            7,  # LHip 5
+            8,  # LKnee 6
+            9,  # LAnkle 7
+            10,  # LFoot 8
+            12,  # Pelvis? 9
+            13,  # Torso 10
+            14,  # Base of neck (same as 17, 25?) 11
+            15,  # Head low 12
+            17,  # Base of neck (same as 14, 25?)
+            18,  # LShoulder 14
+            19,  # LElbow 15
+            21,  # LWrist 16
+            22,  # LHand 17
+            25,  # Base of neck (same as 14, 17?)
+            26,  # RShoulder 19
+            27,  # RElbow 20
+            29,  # RWrist 21
+            30,  # RHand 22
         ]
-    ).astype(np.int64)
+    )
+
+    BONE_LINKS: ClassVar = [
+        (1, 2),  # WHY IS THIS ONE INDEXED!??!?!??!?!
+        (2, 3),
+        (3, 4),
+        (5, 6),
+        (6, 7),
+        (7, 8),
+        (1, 9),
+        (5, 9),
+        (9, 10),
+        (10, 11),
+        (11, 12),
+        (10, 13),
+        (13, 14),
+        (14, 15),
+        (15, 16),
+        (15, 17),
+        (10, 18),
+        (18, 19),
+        (19, 20),
+        (20, 21),
+        (20, 22),
+    ]
+
+    LIMB_LINKS: ClassVar = [
+        [1, 2, 3, 4],  # Right leg?
+        [5, 6, 7, 8],  # Left leg?
+        [9, 10, 11, 12, 13],  # torso?
+        [14, 15, 16, 17],  # Left arm?
+        [19, 20, 21, 22],  # Right arm?
+    ]
 
     def __init__(self):
         r"""H36M skeleton with 22 joints."""
 
         self.bone_list = self.generate_bone_list()
-        self.bone_adj_mat = self.generate_bone_adj_mat()
+        self.skl_mask = self.generate_skl_mask()
+
+        self.skl_mask_hyper = self.generate_skl_mask_hyper()
 
     def compute_flat_index(self, t, j, c):
         r"""Compute flat index for motion matrix of shape (T,J,C).
@@ -737,90 +690,52 @@ class H36MSkeleton:
             Edge list with bone links and self links.
         """
         self_links = [(i, i) for i in range(self.NUM_JOINTS)]
-        joint_links = [
-            (1, 2),
-            (2, 3),
-            (3, 4),
-            (5, 6),
-            (6, 7),
-            (7, 8),
-            (1, 9),
-            (5, 9),
-            (9, 10),
-            (10, 11),
-            (11, 12),
-            (10, 13),
-            (13, 14),
-            (14, 15),
-            (15, 16),
-            (15, 17),
-            (10, 18),
-            (18, 19),
-            (19, 20),
-            (20, 21),
-            (20, 22),
-        ]
+        return self_links + [(i - 1, j - 1) for (i, j) in self.BONE_LINKS]
 
-        return self_links + [(i - 1, j - 1) for (i, j) in joint_links]
-
-    def generate_time_edges(self, n_times):
-        r"""Generate list of edges only through time.
-
-        Parameters
-        ----------
-        n_times : int
-            Number of frames to consider.
-
-        Returns
-        -------
-        torch.tensor
-            Time edges.
-        """
-        time_edges = []
-        for c in range(self.NUM_CHANNELS):
-            for j in range(self.NUM_JOINTS):
-                for t1 in range(n_times):
-                    for t2 in range(n_times):
-                        edge = [
-                            self.compute_flat_index(t1, j, c),
-                            self.compute_flat_index(t2, j, c),
-                        ]
-                        time_edges.append(edge)
-        return torch.tensor(time_edges).T
-
-    def generate_bone_adj_mat(self):
-        r"""Generate adj matrix for H36M skeleton with 22 joints.
-
-        Returns
-        -------
-        list[list[int]]
-            Adj matrix for bone links and self links.
-        """
-        skl = np.zeros((self.NUM_JOINTS, self.NUM_JOINTS))
-        for i, j in self.bone_list:
-            skl[j, i] = 1
-            skl[i, j] = 1
-        return skl
-
-    def get_bone_list(self):
-        r"""Getter fn for bone list.
+    def generate_skl_mask(self):
+        r"""Get skeleton mask for H36M skeleton with 22 joints.
 
         Returns
         -------
         list[tup[int]]
             Edge list with bone links and self links.
         """
-        return self.bone_list[:]
+        # Create adjacency matrix
+        skl_mask = torch.zeros(
+            self.NUM_JOINTS, self.NUM_JOINTS, requires_grad=False
+        )
+        for i, j in self.bone_list:
+            skl_mask[i, j] = 1
+            skl_mask[j, i] = 1
+        return skl_mask
 
-    def get_bone_adj_mat(self):
-        r"""Getter fn for bone adj mat.
+    def generate_skl_mask_hyper(self):
+        r"""Get hyperedge skeleton mask for H36M skeleton with 22 joints.
 
         Returns
         -------
-        list[list[int]]
-            Adj matrix for bone links and self links.
+        list[tup[int]]
+            Edge list with limb links, bone links and self links.
         """
-        return self.bone_adj_mat[:]
+        # Create adjacency matrix
+        skl_mask = torch.zeros(
+            self.NUM_JOINTS, self.NUM_JOINTS, requires_grad=False
+        )
+        for i, j in self.bone_list:
+            skl_mask[i, j] = 1
+            skl_mask[j, i] = 1
+
+        for limb in self.LIMB_LINKS:
+            # Connect all joints within each limb to each other
+            for i in limb:
+                for j in limb:
+                    if (
+                        i != j
+                    ):  # Skip self connections as they're already handled
+                        skl_mask[i - 1, j - 1] = (
+                            1  # -1 since joints are 1-indexed in LIMB_LINKS
+                        )
+        return skl_mask
 
 
 def _some_variables():
@@ -1131,25 +1046,3 @@ def rotmat2xyz_torch(rotmat):
     parent, offset, rotInd, expmapInd = _some_variables()
     xyz = fkl_torch(rotmat, parent, offset, rotInd, expmapInd)
     return xyz
-
-
-if __name__ == "__main__":
-    # A = np.array([[ [000, 100, 200, 1],
-    #                 [2, 2, 2, 2]],
-    #               [ [11, 12, 13, 14],
-    #                 [2, 2, 2, 2]],
-    #               [ [1, 1, 1, 1],
-    #                 [2, 2, 2, 2]]])
-
-    # print(A)
-    # print(A.reshape(4*3*2, order="C"))
-    # print(A.shape)
-    root_data_dir = "/home/abby/code/TopoBenchmark/datasets/graph/motion"
-    name = "H36MDataset"
-    dataset = H36MDataset(
-        root=root_data_dir,
-        name=name,  # self.parameters["data_name"],
-        parameters=None,
-        force_reload=True,
-    )  # self.parameters,
-    # print(dataset)
