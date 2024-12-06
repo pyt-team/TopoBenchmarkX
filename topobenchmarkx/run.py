@@ -140,16 +140,8 @@ def run(cfg: DictConfig) -> tuple[dict[str, Any], dict[str, Any]]:
             dataset, dataset_dir, transform_config
         )
 
-        # True is good for early debugging of model; gets it to run
-        # False is good for when you want to train the whole shebang
-        keep_things_on_disk = False  # faster to load but slower to run
-
-        if keep_things_on_disk:
-            # TODO: Make load_dataset_splits use OnDiskDataset
-            # TODO: currently not really using preprocessor ... alas
-            print(
-                "ON DISK PREPROCESSOR.\nSplitting dataset into train/val/test..."
-            )
+        if cfg.dataset.loader.parameters.keep_splits_on_disk:
+            print("Splitting dataset into train/val/test (on disk)...")
             train_indices, val_indices, test_indices = (
                 preprocessor.load_dataset_split_indices(
                     cfg.dataset.split_params
@@ -159,7 +151,6 @@ def run(cfg: DictConfig) -> tuple[dict[str, Any], dict[str, Any]]:
             # Prepare datamodule
             log.info("Instantiating datamodule...")
             if cfg.dataset.parameters.task_level in ["node", "graph"]:
-                # TODO: Make TBXDataloader use OnDiskDatasets
                 datamodule = OnDiskTBXDataloader(
                     dataset=dataset,
                     train_indices=train_indices,
@@ -170,7 +161,7 @@ def run(cfg: DictConfig) -> tuple[dict[str, Any], dict[str, Any]]:
             else:
                 raise ValueError("Invalid task_level")
         else:
-            print("Splitting dataset into train/val/test... In memory...")
+            print("Splitting dataset into train/val/test (in memory)...")
             dataset_train, dataset_val, dataset_test = (
                 preprocessor.load_dataset_splits(cfg.dataset.split_params)
             )
