@@ -1,4 +1,4 @@
-python -m topobenchmarkx \
+python -m topobenchmark \
     dataset=graph/H36MDataset \
     model=graph/gcnext \
     dataset.dataloader_params.batch_size=256 \
@@ -8,7 +8,7 @@ python -m topobenchmarkx \
     model.backbone.config.motion_mlp.use_skeletal_hyperedges=True\
     test=True
 
-python -m topobenchmarkx \
+python -m topobenchmark \
     dataset=graph/H36MDataset \
     model=graph/gcnext \
     dataset.dataloader_params.batch_size=256 \

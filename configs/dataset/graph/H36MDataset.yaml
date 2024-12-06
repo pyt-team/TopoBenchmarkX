@@ -1,6 +1,6 @@
 # Dataset loader config
 loader:
- _target_: topobenchmarkx.data.loaders.H36MDatasetLoader
+ _target_: topobenchmark.data.loaders.H36MDatasetLoader
  parameters: 
    data_domain: graph
    data_type: motion

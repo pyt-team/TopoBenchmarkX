@@ -3,7 +3,7 @@
 import pytest
 from omegaconf import OmegaConf
 import hydra
-from topobenchmarkx.utils.config_resolvers import (
+from topobenchmark.utils.config_resolvers import (
     infer_in_channels,
     infere_num_cell_dimensions,
     get_default_metrics,

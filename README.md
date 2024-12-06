@@ -15,7 +15,7 @@ Assess how your model compares against state-of-the-art topological neural netwo
 [![Lint](https://github.com/geometric-intelligence/TopoBenchmark/actions/workflows/lint.yml/badge.svg)](https://github.com/geometric-intelligence/TopoBenchmark/actions/workflows/lint.yml)
 [![Test](https://github.com/geometric-intelligence/TopoBenchmark/actions/workflows/test.yml/badge.svg)](https://github.com/geometric-intelligence/TopoBenchmark/actions/workflows/test.yml)
 [![Codecov](https://codecov.io/gh/geometric-intelligence/TopoBenchmark/branch/main/graph/badge.svg)](https://app.codecov.io/gh/geometric-intelligence/TopoBenchmark)
-[![Docs](https://img.shields.io/badge/docs-website-brightgreen)](https://geometric-intelligence.github.io/topobenchmarkx/index.html)
+[![Docs](https://img.shields.io/badge/docs-website-brightgreen)](https://geometric-intelligence.github.io/topobenchmark/index.html)
 [![Python](https://img.shields.io/badge/python-3.10+-blue?logo=python)](https://www.python.org/)
 [![license](https://badgen.net/github/license/geometric-intelligence/TopoBenchmark?color=green)](https://github.com/geometric-intelligence/TopoBenchmark/blob/main/LICENSE)
 [![slack](https://img.shields.io/badge/chat-on%20slack-purple?logo=slack)](https://join.slack.com/t/geometric-intelligenceworkspace/shared_invite/zt-2k63sv99s-jbFMLtwzUCc8nt3sIRWjEw)
@@ -53,12 +53,12 @@ Additionally, the library offers the ability to transform, i.e. _lift_, each dat
 
 If you do not have conda on your machine, please follow [their guide](https://docs.anaconda.com/free/miniconda/miniconda-install/) to install it. 
 
-First, clone the `TopoBenchmark` repository and set up a conda environment `tbx` with python 3.11.3. 
+First, clone the `TopoBenchmark` repository and set up a conda environment `tb` with python 3.11.3. 
 
 ```
-git clone git@github.com:geometric-intelligence/topobenchmarkx.git
+git clone git@github.com:geometric-intelligence/topobenchmark.git
 cd TopoBenchmark
-conda create -n tbx python=3.11.3
+conda create -n tb python=3.11.3
 ```
 
 Next, check the CUDA version of your machine:
@@ -79,13 +79,13 @@ This command installs the `TopoBenchmark` library and its dependencies.
 Next, train the neural networks by running the following command:
 
 ```
-python -m topobenchmarkx 
+python -m topobenchmark 
 ```
 
 Thanks to `hydra` implementation, one can easily override the default experiment configuration through the command line. For instance, the model and dataset can be selected as:
 
 ```
-python -m topobenchmarkx model=cell/cwn dataset=graph/MUTAG
+python -m topobenchmark model=cell/cwn dataset=graph/MUTAG
 ```
 
 **Remark:** By default, our pipeline identifies the source and destination topological domains, and applies a default lifting between them if required.
@@ -160,13 +160,13 @@ To implement and train a GCCN, run the following command line with the desired c
 
 
 ```
-python -m topobenchmarkx \
+python -m topobenchmark \
     dataset=graph/PROTEINS \
     dataset.split_params.data_seed=1 \
     model=cell/topotune\
     model.tune_gnn=GCN \
     model.backbone.GNN.num_layers=2 \
-    model.backbone.routes=\[\[\[0,0\],up_laplacian\],\[\[2,1\],boundary\]\] \
+    model.backbone.neighborhoods=\[1-up_laplacian-0,1-down_incidence-2\] \
     model.backbone.layers=4 \
     model.feature_encoder.out_channels=32 \
     model.feature_encoder.proj_dropout=0.3 \
@@ -271,41 +271,8 @@ We list the liftings used in `TopoBenchmark` to transform datasets. Here, a _lif
 
 To join the development of `TopoBenchmark`, you should install the library in dev mode. 
 
-For this, you can create an environment using either conda or docker. Both options are detailed below.
+For this, you can create an environment using conda or docker. Please, follow the steps in <a href="#jigsaw-get-started">:jigsaw: Get Started</a>.
 
-### :snake: Using Conda Environment
-
-Follow the steps in <a href="#jigsaw-get-started">:jigsaw: Get Started</a>.
-
-
-### :whale: Using Docker
-
-For ease of use, TopoBenchmark employs <img src="https://github.com/wesbos/Font-Awesome-Docker-Icon/blob/master/docker-white.svg" width="20" height="20"> [Docker](https://www.docker.com/). To set it up on your system you can follow [their guide](https://docs.docker.com/get-docker/). once installed, please follow the next steps:
-
-First, clone the repository and navigate to the correct folder.
-```
-git clone git@github.com:geometric-intelligence/topobenchmarkx.git
-cd TopoBenchmark
-```
-
-Then, build the Docker image.
-```
-docker build -t topobenchmarkx:new .
-```
-
-Depending if you want to use GPUs or not, these are the commands to run the Docker image and mount the current directory.
-
-With GPUs
-```
-docker run -it -d --gpus all --volume $(pwd):/TopoBenchmark topobenchmarkx:new
-```
-
-With CPU
-```
-docker run -it -d --volume $(pwd):/TopoBenchmark topobenchmarkx:new
-```
-
-Happy development!
 
 
 ## :mag: References ##

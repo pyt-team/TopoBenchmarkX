@@ -1,4 +1,4 @@
-_target_: topobenchmarkx.data.loaders.SimplicialLoader
+_target_: topobenchmark.data.loaders.SimplicialLoader
 
 # Data definition
 parameters:
