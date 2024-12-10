@@ -88,7 +88,7 @@ class GCNext(nn.Module):
         nn.init.xavier_uniform_(self.motion_fc_out.weight, gain=1e-8)
         nn.init.constant_(self.motion_fc_out.bias, 0)
 
-    def forward(self, x, edge_index):
+    def forward(self, x, edge_index, **kwargs):
         """Forward pass.
 
         Parameters
@@ -97,6 +97,8 @@ class GCNext(nn.Module):
             Input of shape [batch*frames*joints*channels, 1].
         edge_index : torch.Tensor
             Edge indices; this implementation assumes fully connected & doesn't care.
+        **kwargs : optional
+            Optional additional arguments including edge_weight.
 
         Returns
         -------
