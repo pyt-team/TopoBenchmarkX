@@ -20,6 +20,7 @@ from .identity_gnn import (
     IdentityGIN,
     IdentitySAGE,
 )
+from .gcnext import GCNext
 
 __all__ = [
     "GAT",
@@ -29,6 +30,7 @@ __all__ = [
     "PNA",
     "DeepGraphInfomax",
     "EdgeCNN",
+    "GCNext",
     "GraphMLP",
     "GraphSAGE",
     "IdentityGAT",

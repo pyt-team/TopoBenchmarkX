@@ -134,21 +134,68 @@ def run(cfg: DictConfig) -> tuple[dict[str, Any], dict[str, Any]]:
     # Preprocess dataset and load the splits
     log.info("Instantiating preprocessor...")
     transform_config = cfg.get("transforms", None)
-    preprocessor = PreProcessor(dataset, dataset_dir, transform_config)
-    dataset_train, dataset_val, dataset_test = (
-        preprocessor.load_dataset_splits(cfg.dataset.split_params)
-    )
-    # Prepare datamodule
-    log.info("Instantiating datamodule...")
-    if cfg.dataset.parameters.task_level in ["node", "graph"]:
-        datamodule = TBDataloader(
-            dataset_train=dataset_train,
-            dataset_val=dataset_val,
-            dataset_test=dataset_test,
-            **cfg.dataset.get("dataloader_params", {}),
+
+    if cfg.dataset.loader.parameters.data_name == "H36MDataset":
+        preprocessor = OnDiskPreProcessor(
+            dataset, dataset_dir, transform_config
         )
+
+        if cfg.dataset.loader.parameters.keep_splits_on_disk:
+            print("Splitting dataset into train/val/test (on disk)...")
+            train_indices, val_indices, test_indices = (
+                preprocessor.load_dataset_split_indices(
+                    cfg.dataset.split_params
+                )
+            )
+            print(val_indices)
+            # Prepare datamodule
+            log.info("Instantiating datamodule...")
+            if cfg.dataset.parameters.task_level in ["node", "graph"]:
+                datamodule = OnDiskTBDataloader(
+                    dataset=dataset,
+                    train_indices=train_indices,
+                    val_indices=val_indices,
+                    test_indices=test_indices,
+                    **cfg.dataset.get("dataloader_params", {}),
+                )
+            else:
+                raise ValueError("Invalid task_level")
+        else:
+            print("Splitting dataset into train/val/test (in memory)...")
+            dataset_train, dataset_val, dataset_test = (
+                preprocessor.load_dataset_splits(cfg.dataset.split_params)
+            )
+            print(dataset_val)
+            # Prepare datamodule
+            log.info("Instantiating datamodule...")
+            if cfg.dataset.parameters.task_level in ["node", "graph"]:
+                datamodule = TBDataloader(
+                    dataset_train=dataset_train,
+                    dataset_val=dataset_val,
+                    dataset_test=dataset_test,
+                    **cfg.dataset.get("dataloader_params", {}),
+                )
+            else:
+                raise ValueError("Invalid task_level")
+
     else:
-        raise ValueError("Invalid task_level")
+        preprocessor = PreProcessor(dataset, dataset_dir, transform_config)
+
+        print("Splitting dataset into train/val/test...")
+        dataset_train, dataset_val, dataset_test = (
+            preprocessor.load_dataset_splits(cfg.dataset.split_params)
+        )
+        # Prepare datamodule
+        log.info("Instantiating datamodule...")
+        if cfg.dataset.parameters.task_level in ["node", "graph"]:
+            datamodule = TBDataloader(
+                dataset_train=dataset_train,
+                dataset_val=dataset_val,
+                dataset_test=dataset_test,
+                **cfg.dataset.get("dataloader_params", {}),
+            )
+        else:
+            raise ValueError("Invalid task_level")
 
     # Model for us is Network + logic: inputs backbone, readout, losses
     log.info(f"Instantiating model <{cfg.model._target_}>")
