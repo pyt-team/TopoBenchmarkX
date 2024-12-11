@@ -255,13 +255,15 @@ def infere_num_cell_dimensions(selected_dimensions, in_channels):
         return len(in_channels)
 
 
-def get_default_metrics(task):
+def get_default_metrics(task, metrics=None):
     r"""Get default metrics for a given task.
 
     Parameters
     ----------
     task : str
         Task, either "classification" or "regression".
+    metrics : list, optional
+        List of metrics to be used. If None, the default metrics will be used.
 
     Returns
     -------
@@ -273,9 +275,12 @@ def get_default_metrics(task):
     ValueError
         If the task is invalid.
     """
-    if "classification" in task:
-        return ["accuracy", "precision", "recall", "auroc"]
-    elif "regression" in task:
-        return ["mse", "mae"]
+    if metrics is not None:
+        return metrics
     else:
-        raise ValueError(f"Invalid task {task}")
+        if "classification" in task:
+            return ["accuracy", "precision", "recall", "auroc"]
+        elif "regression" in task:
+            return ["mse", "mae"]
+        else:
+            raise ValueError(f"Invalid task {task}")

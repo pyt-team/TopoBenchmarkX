@@ -117,6 +117,9 @@ class TestConfigResolvers:
         
     def test_get_default_metrics(self):
         """Test get_default_metrics."""
+        out = get_default_metrics("classification", ["accuracy", "precision"])
+        assert out == ["accuracy", "precision"]
+        
         out = get_default_metrics("classification")
         assert out == ["accuracy", "precision", "recall", "auroc"]
 

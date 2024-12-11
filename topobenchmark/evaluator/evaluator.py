@@ -37,6 +37,7 @@ class TBEvaluator(AbstractEvaluator):
         elif self.task == "multilabel classification":
             parameters = {"num_classes": kwargs["num_classes"]}
             parameters["task"] = "multilabel"
+            parameters["num_labels"] = kwargs["num_classes"]
             metric_names = kwargs["metrics"]
 
         elif self.task == "regression":
@@ -44,7 +45,7 @@ class TBEvaluator(AbstractEvaluator):
             metric_names = kwargs["metrics"]
 
         else:
-            raise ValueError(f"Invalid task {kwargs['task']}")
+            raise ValueError(f"Invalid task {task}")
 
         metrics = {}
         for name in metric_names:
@@ -83,7 +84,10 @@ class TBEvaluator(AbstractEvaluator):
         if self.task == "regression":
             self.metrics.update(preds, target.unsqueeze(1))
 
-        elif self.task == "classification":
+        elif (
+            self.task == "classification"
+            or self.task == "multilabel classification"
+        ):
             self.metrics.update(preds, target)
 
         else:

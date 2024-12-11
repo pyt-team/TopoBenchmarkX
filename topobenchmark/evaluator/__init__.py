@@ -3,6 +3,8 @@
 from torchmetrics.classification import AUROC, Accuracy, Precision, Recall
 from torchmetrics.regression import MeanAbsoluteError, MeanSquaredError
 
+from .metrics import ExampleRegressionMetric
+
 # Define metrics
 METRICS = {
     "accuracy": Accuracy,
@@ -11,6 +13,7 @@ METRICS = {
     "auroc": AUROC,
     "mae": MeanAbsoluteError,
     "mse": MeanSquaredError,
+    "example": ExampleRegressionMetric,
 }
 
 from .base import AbstractEvaluator  # noqa: E402
