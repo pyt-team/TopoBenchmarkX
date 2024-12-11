@@ -3,7 +3,7 @@
 from torchmetrics.classification import AUROC, Accuracy, Precision, Recall
 from torchmetrics.regression import MeanAbsoluteError, MeanSquaredError
 
-from .metrics import ExampleRegressionMetric
+from .metrics import ExampleRegressionMetric, MeanPerJointPositionError
 
 # Define metrics
 METRICS = {
@@ -14,6 +14,7 @@ METRICS = {
     "mae": MeanAbsoluteError,
     "mse": MeanSquaredError,
     "example": ExampleRegressionMetric,
+    "mpjpe": MeanPerJointPositionError,
 }
 
 from .base import AbstractEvaluator  # noqa: E402
