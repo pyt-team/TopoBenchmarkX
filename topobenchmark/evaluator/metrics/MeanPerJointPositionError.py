@@ -4,10 +4,6 @@ from typing import Any
 
 import torch
 from torchmetrics import Metric
-from torchmetrics.functional.regression.mse import (
-    _mean_squared_error_compute,
-    _mean_squared_error_update,
-)
 
 
 class MeanPerJointPositionError(Metric):
@@ -33,7 +29,7 @@ class MeanPerJointPositionError(Metric):
     def __init__(
         self,
         num_outputs: int = 1,
-        step_size: int = 25,
+        step_size: int = 2,  # so at 80, 160, ...
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
@@ -49,12 +45,19 @@ class MeanPerJointPositionError(Metric):
                 f"Expected argument `step_size` to be a positive integer but got {step_size}"
             )
         self.step_size = step_size
+        self.step_indices = torch.arange(1, 25, self.step_size)
+        # Include the frame with 1000ms
+        if 24 not in self.step_indices:
+            self.step_indices = torch.cat(
+                [self.step_indices, torch.tensor([24])]
+            )
+        print("*(@$#)(*#$(@*@#$", self.step_indices)
 
         # Initialize states for accumulating errors
         self.add_state(
             "sum_errors",
             default=torch.zeros(
-                num_outputs * (50 // step_size)
+                num_outputs * len(self.step_indices)  # Only first 1000 ms
             ),  # To store multiple steps
             dist_reduce_fx="sum",
         )
@@ -87,11 +90,10 @@ class MeanPerJointPositionError(Metric):
         avg_across_joints = torch.mean(euc_dist, dim=2)
 
         # Step 4: Sum across samples in batch -> (f, )
-        mpjpe = torch.sum(avg_across_joints, dim=0)
+        mpjpe = torch.sum(avg_across_joints, dim=0)[:25]  # Only first 1000ms
 
         # Step 5: Calculate MPJPE at step_size intervals
-        step_indices = torch.arange(0, 50, self.step_size)
-        mpjpe_steps = mpjpe[step_indices]  # Shape: (num_steps,)
+        mpjpe_steps = mpjpe[self.step_indices]  # Shape: (num_steps,)
         self.sum_errors += mpjpe_steps  # Shape: (num_steps,)
 
         self.total += preds.shape[0]  # Add batch size

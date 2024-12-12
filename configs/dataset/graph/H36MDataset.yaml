@@ -6,7 +6,7 @@ loader:
    data_type: motion
    data_name: H36MDataset
    data_dir: ${paths.data_dir}/${dataset.loader.parameters.data_domain}/${dataset.loader.parameters.data_type}
-   keep_splits_on_disk: False # True # True loads faster, but runs slower
+   keep_splits_on_disk: True # True loads faster, but runs slower
 
 # Dataset parameters
 parameters:
