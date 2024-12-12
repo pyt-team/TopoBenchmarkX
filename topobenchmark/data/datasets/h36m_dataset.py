@@ -343,10 +343,10 @@ class H36MDataset(OnDiskDataset):
                 )
             print(f"\tDone with {subj_name}.")
 
-            # Step 4: Create database.
-            print("Creating database...")
-            self._create_database()
-            print("Done processing.")
+        # Step 4: Create database.
+        print("Creating database...")
+        self._create_database()
+        print("Done processing.")
 
     def _create_database(self) -> None:
         """Create the SQLite database with metadata for all saved .pt files."""

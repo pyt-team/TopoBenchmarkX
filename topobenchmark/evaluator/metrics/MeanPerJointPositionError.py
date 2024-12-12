@@ -17,9 +17,6 @@ class MeanPerJointPositionError(Metric):
     ----------
     num_outputs : int
         The number of outputs.
-    per_frame : bool
-        Whether to calculate MPJPE per frame (default: True),
-        otherwise average up to that frame.
     step_size : int
         Step size over which to calculate MPJPE.
     **kwargs : Any
@@ -36,7 +33,6 @@ class MeanPerJointPositionError(Metric):
     def __init__(
         self,
         num_outputs: int = 1,
-        per_frame: bool = True,
         step_size: int = 25,
         **kwargs: Any,
     ) -> None:
@@ -48,52 +44,18 @@ class MeanPerJointPositionError(Metric):
             )
         self.num_outputs = num_outputs
 
-        if not isinstance(per_frame, bool):
-            raise ValueError(
-                f"Expected argument `per_frame` to be a boolean but got {per_frame}"
-            )
-        self.per_frame = per_frame
-
         if not (isinstance(step_size, int) and step_size > 0):
             raise ValueError(
                 f"Expected argument `step_size` to be a positive integer but got {step_size}"
             )
         self.step_size = step_size
 
-        # Initialize joint indices
-        self.joint_to_ignore = torch.tensor([16, 20, 23, 24, 28, 31])
-        self.joint_equal = torch.tensor([13, 19, 22, 13, 27, 30])
-        self.joint_used_xyz = torch.tensor(
-            [
-                2,
-                3,
-                4,
-                5,
-                7,
-                8,
-                9,
-                10,
-                12,
-                13,
-                14,
-                15,
-                17,
-                18,
-                19,
-                21,
-                22,
-                25,
-                26,
-                27,
-                29,
-                30,
-            ]
-        )
-
         # Initialize states for accumulating errors
         self.add_state(
             "sum_errors",
-            default=torch.zeros(num_outputs),
+            default=torch.zeros(
+                num_outputs * (50 // step_size)
+            ),  # To store multiple steps
             dist_reduce_fx="sum",
         )
         self.add_state("total", default=torch.tensor(0), dist_reduce_fx="sum")
@@ -115,34 +77,22 @@ class MeanPerJointPositionError(Metric):
         preds = preds.view(batch_size, 50, 22, 3)
         target = target.view(batch_size, 50, 22, 3)
 
-        # Predict "autoregressively"
-        num_steps = (
-            25 // self.step_size
-        )  # predictions only for first 1000ms = 25 frames
-        # for step in range(num_steps):
+        # Step 1: Convert to millimetres and get difference
+        error_mm = 1000 * (preds - target)
 
-        # # Handle joint substitutions
-        # preds = preds.clone()
-        # preds[..., self.joint_to_ignore, :] = preds[..., self.joint_equal, :]
+        # Step 2: Calculate euclidean distance across xyz coordinates -> (bs, f, j)
+        euc_dist = torch.norm(error_mm, dim=3)
 
-        # Calculate MPJPE (in millimeters)
-        errors = torch.norm(
-            preds * 1000 - target * 1000, dim=-1
-        )  # L2 norm across xyz
-        mean_errors = torch.mean(errors, dim=2)  # Mean across joints
+        # Step 3: Average error across joints -> (bs, f)
+        avg_across_joints = torch.mean(euc_dist, dim=2)
 
-        if self.per_frame:
-            # Sum errors per frame
-            self.sum_errors += torch.sum(mean_errors, dim=0)
-        else:
-            # Average up to each frame
-            cumulative_means = (
-                torch.cumsum(mean_errors, dim=1)
-                / torch.arange(
-                    1, mean_errors.shape[1] + 1, device=mean_errors.device
-                )[None, :]
-            )
-            self.sum_errors += torch.sum(cumulative_means, dim=0)
+        # Step 4: Sum across samples in batch -> (f, )
+        mpjpe = torch.sum(avg_across_joints, dim=0)
+
+        # Step 5: Calculate MPJPE at step_size intervals
+        step_indices = torch.arange(0, 50, self.step_size)
+        mpjpe_steps = mpjpe[step_indices]  # Shape: (num_steps,)
+        self.sum_errors += mpjpe_steps  # Shape: (num_steps,)
 
         self.total += preds.shape[0]  # Add batch size
 
