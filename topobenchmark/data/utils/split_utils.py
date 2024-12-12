@@ -195,23 +195,26 @@ def assing_train_val_test_mask_to_graphs(dataset, split_idx):
         graph = dataset[i]
         assigned = False
         if i in split_idx["train"]:
-            graph.train_mask = torch.Tensor([1]).long()
-            graph.val_mask = torch.Tensor([0]).long()
-            graph.test_mask = torch.Tensor([0]).long()
+            if not hasattr(graph, "train_mask"):
+                graph.train_mask = torch.Tensor([1]).long()
+                graph.val_mask = torch.Tensor([0]).long()
+                graph.test_mask = torch.Tensor([0]).long()
             data_train_lst.append(graph)
             assigned = True
 
         if i in split_idx["valid"]:
-            graph.train_mask = torch.Tensor([0]).long()
-            graph.val_mask = torch.Tensor([1]).long()
-            graph.test_mask = torch.Tensor([0]).long()
+            if not hasattr(graph, "train_mask"):
+                graph.train_mask = torch.Tensor([0]).long()
+                graph.val_mask = torch.Tensor([1]).long()
+                graph.test_mask = torch.Tensor([0]).long()
             data_val_lst.append(graph)
             assigned = True
 
         if i in split_idx["test"]:
-            graph.train_mask = torch.Tensor([0]).long()
-            graph.val_mask = torch.Tensor([0]).long()
-            graph.test_mask = torch.Tensor([1]).long()
+            if not hasattr(graph, "train_mask"):
+                graph.train_mask = torch.Tensor([0]).long()
+                graph.val_mask = torch.Tensor([0]).long()
+                graph.test_mask = torch.Tensor([1]).long()
             data_test_lst.append(graph)
             assigned = True
         if not assigned:
