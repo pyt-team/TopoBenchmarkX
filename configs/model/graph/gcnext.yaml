@@ -18,16 +18,19 @@ backbone:
       n_joints: 22
       n_channels: 3
     motion_mlp:
-      num_layers: 3
-      with_normalization: True
-      spatial_fc_only: False
+      num_layers: 4
+      with_normalization: true
+      spatial_fc_only: false
       norm_axis: 'spatial'
-      use_skeletal_hyperedges: True
-  dyna_idx: [1, 2]
+      use_skeletal_hyperedges: true
+    temporal_fc_in: false
+    temporal_fc_out: false
+  dyna_idx: [0, 0]
 
 backbone_wrapper:
   _target_: topobenchmark.nn.wrappers.GNNWrapper
   _partial_: true
+  residual_connections: false
   wrapper_name: GNNWrapper
   out_channels: ${model.feature_encoder.out_channels}
   num_cell_dimensions: ${infere_num_cell_dimensions:${oc.select:model.feature_encoder.selected_dimensions,null},${model.feature_encoder.in_channels}}

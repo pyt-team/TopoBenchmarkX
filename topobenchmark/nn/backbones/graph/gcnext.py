@@ -48,8 +48,12 @@ class GCNext(nn.Module):
 
         self.dynamic_layers = TransGraphConvolution(config)
 
-        self.temporal_fc_in = True  # False  # config.motion_fc_in.temporal_fc
-        self.temporal_fc_out = False  # config.motion_fc_out.temporal_fc
+        self.temporal_fc_in = (
+            config.temporal_fc_in
+        )  # True  # False  # config.motion_fc_in.temporal_fc
+        self.temporal_fc_out = (
+            config.temporal_fc_in
+        )  # False  # config.motion_fc_out.temporal_fc
         if self.temporal_fc_in:
             # if true then layer is 50x50
             self.motion_fc_in = nn.Linear(self.n_frames, self.n_frames)
@@ -132,11 +136,12 @@ class GCNext(nn.Module):
             motion_feats = self.motion_fc_in(motion_feats)
         else:
             # Transform across features (66,66) with temporal weighting
-            motion_feats = self.motion_fc_in(motion_input)
-            motion_feats = self.arr0(motion_feats)  # now its (bs, 66, 50)
-            motion_feats = torch.einsum(
-                "bvt,tj->bvj", motion_feats, self.in_weight
-            )
+            # motion_feats = self.motion_fc_in(motion_input)
+            # motion_feats = self.arr0(motion_feats)  # now its (bs, 66, 50)
+            # motion_feats = torch.einsum(
+            #     "bvt,tj->bvj", motion_feats, self.in_weight
+            # )
+            motion_feats = motion_input
         # motion_feats = motion_input
 
         # Shape of motion_feats is now (batch_size, 66, 50)
@@ -162,11 +167,12 @@ class GCNext(nn.Module):
             motion_feats = self.motion_fc_out(motion_feats)
             motion_feats = self.arr1(motion_feats)
         else:
-            motion_feats = self.arr1(motion_feats)
-            motion_feats = self.motion_fc_out(motion_feats)
-            motion_feats = torch.einsum(
-                "btv,tj->bjv", motion_feats, self.out_weight
-            )
+            a = 3
+            # motion_feats = self.arr1(motion_feats)
+            # motion_feats = self.motion_fc_out(motion_feats)
+            # motion_feats = torch.einsum(
+            #     "btv,tj->bjv", motion_feats, self.out_weight
+            # )
 
         # Reshape back to torch_geometric format [batch*num_nodes, features]
         motion_feats = motion_feats.reshape(-1, 1)

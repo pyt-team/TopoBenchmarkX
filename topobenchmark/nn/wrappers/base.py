@@ -24,8 +24,11 @@ class AbstractWrapper(ABC, torch.nn.Module):
         self.backbone = backbone
         out_channels = kwargs["out_channels"]
         self.dimensions = range(kwargs["num_cell_dimensions"])
-        self.residual_connections = kwargs.get("residual_connections", True)
-
+        self.residual_connections = (
+            False  # kwargs.get("residual_connections", True)
+        )
+        # print(self.residual_connections)
+        # input()
         for i in self.dimensions:
             setattr(
                 self,
