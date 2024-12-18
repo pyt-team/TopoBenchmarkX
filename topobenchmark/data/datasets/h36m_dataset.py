@@ -232,21 +232,24 @@ class H36MDataset(OnDiskDataset):
         # This probably isn't the best place to do it.
         data = torch.load(filepath, weights_only=False)
 
-        n_nodes = data.x.shape[0] * 2
+        n_nodes = data.x.shape[0]
         if idx in self.train_idx:
-            data.train_mask = torch.arange(n_nodes).long()
-            data.val_mask = torch.arange(n_nodes).long()
-            data.test_mask = torch.arange(n_nodes).long()
+            # TODO: Compute loss on next 10 frames in training.
+            data.train_mask = torch.arange(n_nodes * 2).long()
+            data.val_mask = torch.Tensor([0]).long()
+            data.test_mask = torch.Tensor([0]).long()
 
         if idx in self.val_idx:
-            data.train_mask = torch.arange(n_nodes).long()
+            data.train_mask = torch.Tensor([0]).long()
+            # TODO: Compute loss on next 25 frames in eval.
             data.val_mask = torch.arange(n_nodes * 2).long()
-            data.test_mask = torch.arange(n_nodes).long()
+            data.test_mask = torch.Tensor([0]).long()
 
         if idx in self.test_idx:
-            data.train_mask = torch.arange(n_nodes).long()
-            data.val_mask = torch.arange(n_nodes).long()
-            data.test_mask = torch.arange(n_nodes).long()
+            data.train_mask = torch.Tensor([0]).long()
+            data.val_mask = torch.Tensor([0]).long()
+            #  TODO: Compute loss on next 25 frames in eval.
+            data.test_mask = torch.arange(n_nodes * 2).long()
 
         return data
 

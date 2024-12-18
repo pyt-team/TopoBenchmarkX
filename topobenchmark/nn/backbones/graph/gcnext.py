@@ -31,7 +31,6 @@ class GCNext(nn.Module):
         super().__init__()
 
         self.config = config
-        self.out_channels = 7
 
         self.n_frames = config.motion_dataset.n_frames
         self.n_joints = config.motion_dataset.n_joints
@@ -40,6 +39,13 @@ class GCNext(nn.Module):
         self.n_nodes_per_frame = self.n_joints * self.n_channels
 
         self.n_nodes = self.n_frames * self.n_joints * self.n_channels
+
+        # Whether to compute in frequency domain.
+        self.compute_in_freq_domain = config.compute_in_freq_domain
+        if self.compute_in_freq_domain:
+            self.dct_mat, self.idct_mat = self.get_dct_and_idct_mats(
+                self.n_frames
+            )
 
         # seq = 50  # love hard coding
 
@@ -92,6 +98,31 @@ class GCNext(nn.Module):
         nn.init.xavier_uniform_(self.motion_fc_out.weight, gain=1e-8)
         nn.init.constant_(self.motion_fc_out.bias, 0)
 
+    def get_dct_and_idct_mats(self, n):
+        """Get matrices for discrete cosine transform and its inverse.
+
+        Parameters
+        ----------
+        n : int
+            Size of matrix to generate.
+
+        Returns
+        -------
+        np.array
+            Discrete cosine transform and its inverse.
+        """
+        dct_m = np.eye(n)
+        for k in np.arange(n):
+            for i in np.arange(n):
+                w = np.sqrt(2 / n)
+                if k == 0:
+                    w = np.sqrt(1 / n)
+                dct_m[k, i] = w * np.cos(np.pi * (i + 1 / 2) * k / n)
+        idct_m = np.linalg.inv(dct_m)
+        return torch.tensor(dct_m).float().cuda().unsqueeze(0), torch.tensor(
+            idct_m
+        ).float().cuda().unsqueeze(0)
+
     def forward(self, x, edge_index, **kwargs):
         """Forward pass.
 
@@ -109,9 +140,8 @@ class GCNext(nn.Module):
         torch.Tensor
             Output node features.
         """
-        # Debug input at top level
-
-        tau = 1
+        # Default from GCNext paper
+        tau = 5
 
         batch_size = x.size(0) // self.n_nodes
 
@@ -119,6 +149,15 @@ class GCNext(nn.Module):
         motion_input = x.view(
             batch_size, self.n_frames, self.n_nodes_per_frame
         )
+
+        #######
+        ## TRANSFORM TO FREQUENCY DOMAIN WITH
+        ##    DISCRETE COSINE TRANSFORM
+        #######
+        if self.compute_in_freq_domain:
+            motion_input = torch.matmul(
+                self.dct_mat[:, : self.n_frames, :], motion_input.clone()
+            )
 
         # We don't care about edge_index at all.
         # This is sketchy, but fine.
@@ -136,13 +175,11 @@ class GCNext(nn.Module):
             motion_feats = self.motion_fc_in(motion_feats)
         else:
             # Transform across features (66,66) with temporal weighting
-            # motion_feats = self.motion_fc_in(motion_input)
-            # motion_feats = self.arr0(motion_feats)  # now its (bs, 66, 50)
-            # motion_feats = torch.einsum(
-            #     "bvt,tj->bvj", motion_feats, self.in_weight
-            # )
-            motion_feats = motion_input
-        # motion_feats = motion_input
+            motion_feats = self.motion_fc_in(motion_input)
+            motion_feats = self.arr0(motion_feats)  # now its (bs, 66, 50)
+            motion_feats = torch.einsum(
+                "bvt,tj->bvj", motion_feats, self.in_weight
+            )
 
         # Shape of motion_feats is now (batch_size, 66, 50)
         # Reshape to be batch 3D blocks (bs, 22, 3, 50)
@@ -167,12 +204,20 @@ class GCNext(nn.Module):
             motion_feats = self.motion_fc_out(motion_feats)
             motion_feats = self.arr1(motion_feats)
         else:
-            a = 3
-            # motion_feats = self.arr1(motion_feats)
-            # motion_feats = self.motion_fc_out(motion_feats)
-            # motion_feats = torch.einsum(
-            #     "btv,tj->bjv", motion_feats, self.out_weight
-            # )
+            motion_feats = self.arr1(motion_feats)
+            motion_feats = self.motion_fc_out(motion_feats)
+            motion_feats = torch.einsum(
+                "btv,tj->bjv", motion_feats, self.out_weight
+            )
+
+        #######
+        ## TRANSFORM BACK TO SPATIAL DOMAIN WITH
+        ##    INVERSE DISCRETE COSINE TRANSFORM
+        #######
+        if self.compute_in_freq_domain:
+            motion_feats = torch.matmul(
+                self.idct_mat[:, :, : self.n_frames], motion_feats
+            )
 
         # Reshape back to torch_geometric format [batch*num_nodes, features]
         motion_feats = motion_feats.reshape(-1, 1)

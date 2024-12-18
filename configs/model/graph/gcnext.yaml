@@ -18,14 +18,15 @@ backbone:
       n_joints: 22
       n_channels: 3
     motion_mlp:
-      num_layers: 24
+      num_layers: 48
       with_normalization: true
       spatial_fc_only: false
       norm_axis: 'spatial'
       use_skeletal_hyperedges: true
     temporal_fc_in: false
     temporal_fc_out: false
-  dyna_idx: [0, 24]
+    compute_in_freq_domain: true
+  dyna_idx: [0, 48]
 
 backbone_wrapper:
   _target_: topobenchmark.nn.wrappers.GNNWrapper
