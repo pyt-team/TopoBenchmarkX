@@ -232,21 +232,21 @@ class H36MDataset(OnDiskDataset):
         # This probably isn't the best place to do it.
         data = torch.load(filepath, weights_only=False)
 
-        n_nodes = data.x.shape[0]
+        n_nodes = data.x.shape[0] * 2
         if idx in self.train_idx:
-            data.train_mask = torch.ones(n_nodes).long()
-            data.val_mask = torch.zeros(n_nodes).long()
-            data.test_mask = torch.zeros(n_nodes).long()
+            data.train_mask = torch.arange(n_nodes).long()
+            data.val_mask = torch.arange(n_nodes).long()
+            data.test_mask = torch.arange(n_nodes).long()
 
         if idx in self.val_idx:
-            data.train_mask = torch.zeros(n_nodes).long()
-            data.val_mask = torch.ones(n_nodes).long()
-            data.test_mask = torch.zeros(n_nodes).long()
+            data.train_mask = torch.arange(n_nodes).long()
+            data.val_mask = torch.arange(n_nodes * 2).long()
+            data.test_mask = torch.arange(n_nodes).long()
 
         if idx in self.test_idx:
-            data.train_mask = torch.zeros(n_nodes).long()
-            data.val_mask = torch.zeros(n_nodes).long()
-            data.test_mask = torch.ones(n_nodes).long()
+            data.train_mask = torch.arange(n_nodes).long()
+            data.val_mask = torch.arange(n_nodes).long()
+            data.test_mask = torch.arange(n_nodes).long()
 
         return data
 

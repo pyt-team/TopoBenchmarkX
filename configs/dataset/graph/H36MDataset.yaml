@@ -6,7 +6,7 @@ loader:
    data_type: motion
    data_name: H36MDataset
    data_dir: ${paths.data_dir}/${dataset.loader.parameters.data_domain}/${dataset.loader.parameters.data_type}
-   keep_splits_on_disk: True # True loads faster, but runs slower
+   keep_splits_on_disk: false # True loads faster, but runs slower
 
 # Dataset parameters
 parameters:
@@ -29,4 +29,4 @@ split_params:
 dataloader_params:
  batch_size: 256 #1       # Fixed
  num_workers: 0
- pin_memory: False
+ pin_memory: false
