@@ -16,8 +16,12 @@ from topobenchmark.utils.utils import (
     get_metric_value,
     task_wrapper,
 )
+from topobenchmark.utils.motion_visualisation import (
+    MotionVisualizationCallback,
+)
 
 __all__ = [
+    "MotionVisualizationCallback",
     "RankedLogger",
     "enforce_tags",
     "extras",

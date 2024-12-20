@@ -30,3 +30,8 @@ dataloader_params:
  batch_size: 256 #1       # Fixed
  num_workers: 8
  pin_memory: false
+
+
+visualization:
+  _target_: topobenchmark.callbacks.visualization.MotionVisualizationCallback
+  num_samples: 1

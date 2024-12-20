@@ -176,6 +176,7 @@ cython_debug/
 /datasets/
 /notebooks/*.csv
 notebooks/tmp
+/visualisations/
 *.pickle
 
 # wandb
