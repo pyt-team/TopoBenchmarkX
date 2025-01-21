@@ -18,9 +18,11 @@ METRICS = {
 
 from .base import AbstractEvaluator  # noqa: E402
 from .evaluator import TBEvaluator  # noqa: E402
+from .pose_evaluator import PoseEvaluator
 
 __all__ = [
     "METRICS",
     "AbstractEvaluator",
     "TBEvaluator",
+    "PoseEvaluator",
 ]

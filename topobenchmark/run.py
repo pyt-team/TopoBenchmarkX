@@ -147,7 +147,7 @@ def run(cfg: DictConfig) -> tuple[dict[str, Any], dict[str, Any]]:
                     cfg.dataset.split_params
                 )
             )
-            print(val_indices)
+
             # Prepare datamodule
             log.info("Instantiating datamodule...")
             if cfg.dataset.parameters.task_level in ["node", "graph"]:
@@ -165,7 +165,7 @@ def run(cfg: DictConfig) -> tuple[dict[str, Any], dict[str, Any]]:
             dataset_train, dataset_val, dataset_test = (
                 preprocessor.load_dataset_splits(cfg.dataset.split_params)
             )
-            print(dataset_val)
+
             # Prepare datamodule
             log.info("Instantiating datamodule...")
             if cfg.dataset.parameters.task_level in ["node", "graph"]:

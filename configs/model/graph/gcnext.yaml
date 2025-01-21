@@ -24,6 +24,9 @@ backbone:
       norm_axis: 'spatial'
       use_skeletal_hyperedges: True
   dyna_idx: [1, 2]
+  loss:
+    _target_: topobenchmark.loss.model.GCNextLoss
+    frames_considered: 10
 
 backbone_wrapper:
   _target_: topobenchmark.nn.wrappers.GNNWrapper

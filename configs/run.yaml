@@ -5,11 +5,11 @@
 defaults:
   - _self_
   - dataset: graph/H36MDataset
-  - model: graph/gcnext
   - transforms: ${get_default_transform:${dataset},${model}} #no_transform
   - optimizer: default
   - loss: default
-  - evaluator: default
+  - model: graph/gcnext
+  - evaluator: pose_regression
   - callbacks: default
   - logger: wandb # set logger here or use command line (e.g. `python train.py logger=tensorboard`)
   - trainer: gpu
