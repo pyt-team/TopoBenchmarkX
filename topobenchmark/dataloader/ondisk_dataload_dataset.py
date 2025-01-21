@@ -36,7 +36,9 @@ class OnDiskDataloadDataset(torch_geometric.data.Dataset):
             Tuple containing a list of all the values for the data and the corresponding keys.
         """
         # Wasn't working with numpy.int64
-        data = self.dataset.get(idx)
+        this_idx = int(self.valid_indices[idx])
+
+        data = self.dataset.get(this_idx)
         keys = list(data.keys())
         return ([data[key] for key in keys], keys)
 
@@ -48,4 +50,4 @@ class OnDiskDataloadDataset(torch_geometric.data.Dataset):
         int
             Length of the dataset.
         """
-        return len(self.dataset)
+        return len(self.valid_indices)

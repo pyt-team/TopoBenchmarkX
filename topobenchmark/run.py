@@ -15,6 +15,7 @@ from omegaconf import DictConfig, OmegaConf
 from topobenchmark.data.preprocessor import OnDiskPreProcessor, PreProcessor
 from topobenchmark.dataloader import OnDiskTBDataloader, TBDataloader
 from topobenchmark.utils import (
+    MotionVisualizationCallback,
     RankedLogger,
     extras,
     get_metric_value,
@@ -140,14 +141,13 @@ def run(cfg: DictConfig) -> tuple[dict[str, Any], dict[str, Any]]:
             dataset, dataset_dir, transform_config
         )
 
-        if cfg.dataset.loader.parameters.keep_splits_on_disk:
+        if True:  # cfg.dataset.loader.parameters.keep_splits_on_disk:
             print("Splitting dataset into train/val/test (on disk)...")
             train_indices, val_indices, test_indices = (
                 preprocessor.load_dataset_split_indices(
                     cfg.dataset.split_params
                 )
             )
-
             # Prepare datamodule
             log.info("Instantiating datamodule...")
             if cfg.dataset.parameters.task_level in ["node", "graph"]:
@@ -165,7 +165,10 @@ def run(cfg: DictConfig) -> tuple[dict[str, Any], dict[str, Any]]:
             dataset_train, dataset_val, dataset_test = (
                 preprocessor.load_dataset_splits(cfg.dataset.split_params)
             )
+<<<<<<< HEAD
 
+=======
+>>>>>>> 563a4fa4533e87b1da22feda38e46fa1128bdb7f
             # Prepare datamodule
             log.info("Instantiating datamodule...")
             if cfg.dataset.parameters.task_level in ["node", "graph"]:
@@ -208,6 +211,8 @@ def run(cfg: DictConfig) -> tuple[dict[str, Any], dict[str, Any]]:
 
     log.info("Instantiating callbacks...")
     callbacks: list[Callback] = instantiate_callbacks(cfg.get("callbacks"))
+    # Add visualization callback
+    callbacks.append(MotionVisualizationCallback(num_samples=1))
 
     log.info("Instantiating loggers...")
     logger: list[Logger] = instantiate_loggers(cfg.get("logger"))

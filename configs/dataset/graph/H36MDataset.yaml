@@ -6,7 +6,7 @@ loader:
    data_type: motion
    data_name: H36MDataset
    data_dir: ${paths.data_dir}/${dataset.loader.parameters.data_domain}/${dataset.loader.parameters.data_type}
-   keep_splits_on_disk: True # True loads faster, but runs slower
+   keep_splits_on_disk: false # True loads faster, but runs slower
 
 # Dataset parameters
 parameters:
@@ -16,6 +16,9 @@ parameters:
  loss_type: mse
  monitor_metric: mae
  task_level: node
+ metrics:
+  - mae
+  - mpjpe
 
 # Splits configuration
 split_params:
@@ -25,5 +28,10 @@ split_params:
 # Dataloader parameters
 dataloader_params:
  batch_size: 256 #1       # Fixed
- num_workers: 0
- pin_memory: False
+ num_workers: 8
+ pin_memory: false
+
+
+visualization:
+  _target_: topobenchmark.callbacks.visualization.MotionVisualizationCallback
+  num_samples: 1
