@@ -172,7 +172,7 @@ def random_splitting(labels, parameters, global_data_seed=42):
     return split_idx
 
 
-def assing_train_val_test_mask_to_graphs(dataset, split_idx):
+def assign_train_val_test_mask_to_graphs(dataset, split_idx):
     r"""Split the graph dataset into train, validation, and test datasets.
 
     Parameters
@@ -316,7 +316,7 @@ def load_inductive_splits(dataset, parameters):
         )
 
     train_dataset, val_dataset, test_dataset = (
-        assing_train_val_test_mask_to_graphs(dataset, split_idx)
+        assign_train_val_test_mask_to_graphs(dataset, split_idx)
     )
 
     return train_dataset, val_dataset, test_dataset
