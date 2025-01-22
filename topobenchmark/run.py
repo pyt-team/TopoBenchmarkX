@@ -12,8 +12,8 @@ from lightning import Callback, LightningModule, Trainer
 from lightning.pytorch.loggers import Logger
 from omegaconf import DictConfig, OmegaConf
 
-from topobenchmark.data.preprocessor import PreProcessor
-from topobenchmark.dataloader import TBDataloader
+from topobenchmark.data.preprocessor import OnDiskPreProcessor, PreProcessor
+from topobenchmark.dataloader import OnDiskTBDataloader, TBDataloader
 from topobenchmark.utils import (
     RankedLogger,
     extras,
@@ -131,24 +131,53 @@ def run(cfg: DictConfig) -> tuple[dict[str, Any], dict[str, Any]]:
     log.info(f"Instantiating loader <{cfg.dataset.loader._target_}>")
     dataset_loader = hydra.utils.instantiate(cfg.dataset.loader)
     dataset, dataset_dir = dataset_loader.load()
+
     # Preprocess dataset and load the splits
     log.info("Instantiating preprocessor...")
     transform_config = cfg.get("transforms", None)
-    preprocessor = PreProcessor(dataset, dataset_dir, transform_config)
-    dataset_train, dataset_val, dataset_test = (
-        preprocessor.load_dataset_splits(cfg.dataset.split_params)
-    )
-    # Prepare datamodule
-    log.info("Instantiating datamodule...")
-    if cfg.dataset.parameters.task_level in ["node", "graph"]:
-        datamodule = TBDataloader(
-            dataset_train=dataset_train,
-            dataset_val=dataset_val,
-            dataset_test=dataset_test,
-            **cfg.dataset.get("dataloader_params", {}),
+
+    # Different processing if OnDisk v InMemory
+    # OnDisk splits indices into train/val/test, while InMemory instantiates new datasets
+    if cfg.dataset.loader.parameters.process_on_disk:
+        preprocessor = OnDiskPreProcessor(
+            dataset, dataset_dir, transform_config
         )
+
+        print("Splitting dataset into train/val/test (on disk)...")
+        train_indices, val_indices, test_indices = (
+            preprocessor.load_dataset_split_indices(cfg.dataset.split_params)
+        )
+
+        # Prepare datamodule
+        # TODO: What about if we need to preprocess ondisk but then want to load the splits inmemory (like w/ Human3.6M)?
+        log.info("Instantiating datamodule...")
+        if cfg.dataset.parameters.task_level in ["node", "graph"]:
+            datamodule = OnDiskTBDataloader(
+                dataset=dataset,
+                train_indices=train_indices,
+                val_indices=val_indices,
+                test_indices=test_indices,
+                **cfg.dataset.get("dataloader_params", {}),
+            )
+        else:
+            raise ValueError("Invalid task_level")
+
     else:
-        raise ValueError("Invalid task_level")
+        preprocessor = PreProcessor(dataset, dataset_dir, transform_config)
+        dataset_train, dataset_val, dataset_test = (
+            preprocessor.load_dataset_splits(cfg.dataset.split_params)
+        )
+        # Prepare datamodule
+        log.info("Instantiating datamodule...")
+        if cfg.dataset.parameters.task_level in ["node", "graph"]:
+            datamodule = TBDataloader(
+                dataset_train=dataset_train,
+                dataset_val=dataset_val,
+                dataset_test=dataset_test,
+                **cfg.dataset.get("dataloader_params", {}),
+            )
+        else:
+            raise ValueError("Invalid task_level")
 
     # Model for us is Network + logic: inputs backbone, readout, losses
     log.info(f"Instantiating model <{cfg.model._target_}>")

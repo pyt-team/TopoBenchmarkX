@@ -1,0 +1,38 @@
+# Dataset loader config
+loader:
+ _target_: topobenchmark.data.loaders.H36MDatasetLoader
+ parameters: 
+   data_domain: graph
+   data_type: motion
+   data_name: H36MDataset
+   data_dir: ${paths.data_dir}/${dataset.loader.parameters.data_domain}/${dataset.loader.parameters.data_type}
+   process_on_disk: true # true loads faster, but runs slower
+
+# Dataset parameters
+parameters:
+ num_features: 1 # one feature per node
+ num_classes: 1 # number of output features per node
+ task: regression
+ loss_type: mse
+ monitor_metric: mae
+ task_level: node
+ metrics:
+  - mae
+  # - mpjpe # metric not yet implemented in this branch
+
+# Splits configuration
+split_params:
+ learning_setting: inductive
+ split_type: fixed # H3.6M is normally evaluated with fixed splits between subjects
+ # This is how you would do a random one:
+#  split_type: random 
+#  data_seed: 3
+#  data_split_dir: ${paths.data_dir}/data_splits/${dataset.loader.parameters.data_name}
+#  train_prop: 0.5 # for "random" strategy splitting
+
+
+# Dataloader parameters
+dataloader_params:
+ batch_size: 256
+ num_workers: 8
+ pin_memory: false

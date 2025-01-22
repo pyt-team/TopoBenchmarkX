@@ -187,3 +187,5 @@ wandb/
 
 # test temporary
 .test_tmp/
+
+visualisations/*

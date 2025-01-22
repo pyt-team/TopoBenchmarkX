@@ -296,9 +296,18 @@ def load_inductive_splits(dataset, parameters):
     assert (
         len(dataset) > 1
     ), "Datasets should have more than one graph in an inductive setting."
-    labels = np.array(
-        [data.y.squeeze(0).numpy() for data in dataset.data_list]
-    )
+
+    # Handle OnDiskDataset case
+    if hasattr(dataset, "dataset"):
+        # Get total number of rows from SQLite database
+        total_rows = len(dataset)
+        # I don't think the labels matter, but rather how many pairs there are...
+        # TODO: Don't think this assumption is legal
+        labels = np.arange(total_rows)
+    else:
+        labels = np.array(
+            [data.y.squeeze(0).numpy() for data in dataset.data_list]
+        )
 
     if parameters.split_type == "random":
         split_idx = random_splitting(labels, parameters)
@@ -320,6 +329,58 @@ def load_inductive_splits(dataset, parameters):
     )
 
     return train_dataset, val_dataset, test_dataset
+
+
+def load_inductive_split_indices(dataset, parameters):
+    r"""Load multiple-graph dataset indices with the specified split.
+
+    Parameters
+    ----------
+    dataset : torch_geometric.data.Dataset
+        Graph dataset.
+    parameters : DictConfig
+        Configuration parameters.
+
+    Returns
+    -------
+    list:
+        List containing the train, validation, and test split indices.
+    """
+    # Extract labels from dataset object
+    assert (
+        len(dataset) > 1
+    ), "Datasets should have more than one graph in an inductive setting."
+
+    # Handle OnDiskDataset case
+    if hasattr(dataset, "dataset"):
+        # Get total number of rows from SQLite database
+        total_rows = len(dataset)
+        # I don't think the labels matter, but rather how many pairs there are...
+        # TODO: Don't think this assumption is legal
+        labels = np.arange(total_rows)
+    else:
+        labels = np.array(
+            [data.y.squeeze(0).numpy() for data in dataset.data_list]
+        )
+
+    if parameters.split_type == "random":
+        split_idx = random_splitting(labels, parameters)
+
+    elif parameters.split_type == "fixed" and hasattr(dataset, "split_idx"):
+        split_idx = dataset.split_idx
+
+    else:
+        raise NotImplementedError(
+            f"split_type {parameters.split_type} not valid. Choose either 'random' or 'fixed'. \
+            'k-fold' is not yet implemented. \
+            If 'fixed' is chosen, the dataset should have the attribute split_idx"
+        )
+
+    return (
+        split_idx["train"],
+        split_idx.get("valid", None),
+        split_idx.get("test", None),
+    )
 
 
 def load_coauthorship_hypergraph_splits(data, parameters, train_prop=0.5):
