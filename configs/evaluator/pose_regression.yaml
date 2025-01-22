@@ -3,4 +3,4 @@ task: regression
 task_level: node
 
 # Metrics
-metrics: [mpjpe_2_frames, mpjpe_4_frames, mpjpe_8_frames, mpjpe_10_frames, mpjpe_14_frames, mpjpe_18_frames, mpjpe_22_frames, mpjpe_25_frames] #Available options: mae, mse
+metrics: [mpjpe]

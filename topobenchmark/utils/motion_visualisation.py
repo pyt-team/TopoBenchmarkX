@@ -72,23 +72,26 @@ class MotionVisualizationCallback(Callback):
 
     def on_train_epoch_end(self, trainer, pl_module):
         """Visualize predictions at the end of each epoch."""
+        """
         if not trainer.sanity_checking:
             print("WWOOOOOO")
             # Get a sample from validation set
             batch = next(iter(trainer.train_dataloader))
+            print('got batch')
 
             # Move to same device as model
             # batch = {k: v.to(pl_module.device) if isinstance(v, torch.Tensor) else v
             #         for k, v in batch.items()}
             # batch["x_0"] = batch["x"]
             batch.x_0 = batch.x.to(pl_module.device)
-
+            print('moved to device')
             # Get predictions
             pl_module.eval()
             with torch.no_grad():
                 outputs = pl_module(batch)
+            print('got outputs')
             pl_module.train()
-
+            print('back to train')
             # outputs["labels"].shape = [844800]
             ground_truth = outputs["labels"].reshape(
                 256, 50, 22, 3
@@ -100,10 +103,10 @@ class MotionVisualizationCallback(Callback):
 
             ground_truth_ex = ground_truth[0]
             model_output_ex = model_output[0]
-
+            print('got ex')
             # Create directory if it doesn't exist
             os.makedirs("visualisations", exist_ok=True)
-
+            print('made dir')
             temp_images = []
             for i in range(50):
                 ground_truth_frame = ground_truth_ex[i]
@@ -147,7 +150,10 @@ class MotionVisualizationCallback(Callback):
                 images,
                 fps=10,
             )  # Adjust fps as needed
-
+            print('made gif')
             # Clean up temporary files
             for temp_file in temp_images:
                 os.remove(temp_file)
+            print('cleaned up')
+            """
+        print("visualize here")

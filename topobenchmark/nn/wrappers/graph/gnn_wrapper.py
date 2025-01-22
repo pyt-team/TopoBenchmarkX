@@ -29,7 +29,7 @@ class GNNWrapper(AbstractWrapper):
             batch.edge_index,
             edge_weight=batch.get("edge_weight", None),
         )
-
+        
         model_out = {"labels": batch.y, "batch_0": batch.batch_0}
         model_out["x_0"] = x_0
 

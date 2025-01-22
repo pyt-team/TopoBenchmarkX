@@ -46,6 +46,7 @@ class TBLoss(AbstractLoss):
         dict
             Dictionary containing the model output with the loss.
         """
+        print("Default loss")
         losses = [loss(model_out, batch) for loss in self.losses]
 
         model_out["loss"] = torch.stack(losses).sum()

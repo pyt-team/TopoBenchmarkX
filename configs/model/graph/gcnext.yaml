@@ -27,9 +27,6 @@ backbone:
     temporal_fc_out: false
     compute_in_freq_domain: true
   dyna_idx: [0, 48]
-  loss:
-    _target_: topobenchmark.loss.model.GCNextLoss
-    frames_considered: 10
 
 backbone_wrapper:
   _target_: topobenchmark.nn.wrappers.GNNWrapper

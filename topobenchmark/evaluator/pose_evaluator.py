@@ -10,7 +10,7 @@ class PoseEvaluator(AbstractEvaluator):
             raise ValueError(f"Invalid task {task}. Only 'regression' is supported for MPJPE.")
 
         # Define the specific frames for MPJPE calculation
-        self.frames_to_evaluate = [2, 4, 8,] # 10, 14, 18, 22, 25]
+        self.frames_to_evaluate = [2, 4, 8, 10] # 10, 14, 18, 22, 25]
         self.metrics = {f"mpjpe_{k}_frames": 0.0 for k in self.frames_to_evaluate}
         self.num_samples = {f"mpjpe_{k}_frames": 0 for k in self.frames_to_evaluate}  # For averaging
         self.best_metric = {}

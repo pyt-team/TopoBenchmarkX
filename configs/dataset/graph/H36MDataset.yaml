@@ -14,7 +14,7 @@ parameters:
  num_classes: 1 # number of output features per node
  task: regression
  loss_type: mse
- monitor_metric: mae
+ monitor_metric: mpjpe_10_frames
  task_level: node
  metrics:
   - mae
@@ -30,6 +30,7 @@ dataloader_params:
  batch_size: 256 #1       # Fixed
  num_workers: 8
  pin_memory: false
+ drop_last: true
 
 
 visualization:

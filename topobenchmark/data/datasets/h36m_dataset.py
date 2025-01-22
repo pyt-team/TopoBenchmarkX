@@ -235,21 +235,21 @@ class H36MDataset(OnDiskDataset):
         n_nodes = data.x.shape[0]
         if idx in self.train_idx:
             # TODO: Compute loss on next 10 frames in training.
-            data.train_mask = torch.arange(n_nodes * 2).long()
+            data.train_mask = torch.arange(n_nodes).long() # TODO: Why was there a *2 here?
             data.val_mask = torch.Tensor([0]).long()
             data.test_mask = torch.Tensor([0]).long()
 
         if idx in self.val_idx:
             data.train_mask = torch.Tensor([0]).long()
             # TODO: Compute loss on next 25 frames in eval.
-            data.val_mask = torch.arange(n_nodes * 2).long()
+            data.val_mask = torch.arange(n_nodes).long()
             data.test_mask = torch.Tensor([0]).long()
 
         if idx in self.test_idx:
             data.train_mask = torch.Tensor([0]).long()
             data.val_mask = torch.Tensor([0]).long()
             #  TODO: Compute loss on next 25 frames in eval.
-            data.test_mask = torch.arange(n_nodes * 2).long()
+            data.test_mask = torch.arange(n_nodes).long()
 
         return data
 

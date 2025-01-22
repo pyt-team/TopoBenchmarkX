@@ -21,6 +21,7 @@ class GCNextLoss(AbstractLoss):
     def __init__(self, frames_considered=10):  # noqa: B006
         super().__init__()
         self.frames_considered = frames_considered
+        self.criterion = torch.nn.MSELoss()
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(frames_considered={self.frames_considered})"
@@ -43,20 +44,17 @@ class GCNextLoss(AbstractLoss):
         pred = model_out["x_0"]
         target = model_out["labels"]
 
-        target = target.unsqueeze(1)
-
-        print("--------------------------------")
-        print("LOSS COMPUTING")
-        print(pred.shape)
-        print(target.shape)
-        print("--------------------------------")
+        # target = target.unsqueeze(1)
+        pred = pred.view(-1, 50, 22, 3, 64)
+        target = target.view(-1, 50, 22, 3, 1)
 
         # Compute loss for the frames considered
         pred_considered = pred[:, :self.frames_considered, :, :]
         target_considered = target[:, :self.frames_considered, :, :]
 
-        loss = torch.norm(pred_considered - target_considered, dim=-1)
 
-        model_out["loss"] = loss.mean()
+        loss = self.criterion(pred_considered, target_considered)
+
+        model_out["loss"] = loss
 
         return model_out
