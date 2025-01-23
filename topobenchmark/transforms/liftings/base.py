@@ -41,13 +41,13 @@ class LiftingTransform(torch_geometric.transforms.BaseTransform):
         domain2domain=None,
         feature_lifting="ProjectionSum",
     ):
-        if data2domain is None:
+        if data2domain is None or data2domain == "Identity":
             data2domain = IdentityAdapter()
 
-        if domain2dict is None:
+        if domain2dict is None or data2domain == "Identity":
             domain2dict = IdentityAdapter()
 
-        if domain2domain is None:
+        if domain2domain is None or data2domain == "Identity":
             domain2domain = IdentityAdapter()
 
         if isinstance(lifting, str):
@@ -105,12 +105,16 @@ class Graph2ComplexLiftingTransform(LiftingTransform):
         Feature lifting map.
     preserve_edge_attr : bool
         Whether to preserve edge attributes.
+        Ignored if ``data2domain`` is not None.
     neighborhoods : list, optional
         List of neighborhoods of interest.
     signed : bool, optional
         If True, returns signed connectivity matrices.
     transfer_features : bool, optional
         Whether to transfer features.
+    data2domain : Converter
+        Conversion between ``torch_geometric.Data`` into
+        domain for consumption by lifting.
     """
 
     def __init__(
@@ -121,11 +125,15 @@ class Graph2ComplexLiftingTransform(LiftingTransform):
         neighborhoods=None,
         signed=False,
         transfer_features=True,
+        data2domain=None,
     ):
+        if data2domain is None:
+            data2domain = Data2Graph(preserve_edge_attr)
+
         super().__init__(
             lifting,
             feature_lifting=feature_lifting,
-            data2domain=Data2Graph(preserve_edge_attr),
+            data2domain=data2domain,
             domain2domain=Complex2ComplexData(
                 neighborhoods=neighborhoods,
                 signed=signed,

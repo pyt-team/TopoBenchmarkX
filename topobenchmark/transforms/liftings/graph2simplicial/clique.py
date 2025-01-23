@@ -34,7 +34,7 @@ class SimplicialCliqueLifting(LiftingMap):
 
         Returns
         -------
-        toponetx.Complex
+        toponetx.SimplicialComplex
             Lifted simplicial complex.
         """
         graph = domain
