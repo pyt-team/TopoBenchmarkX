@@ -2,13 +2,14 @@
 
 import torch
 
-from modules.data.utils.utils import load_manual_graph
-from modules.transforms.liftings.graph2cell.neighborhood_lifting import (
+from topobenchmark.data.utils.utils import load_manual_graph
+from topobenchmark.transforms.liftings import (
+    Graph2CellLiftingTransform,
     NeighborhoodLifting,
 )
 
 
-class TestCellCyclesLifting:
+class TestNeighborhoodLifting:
     """Test the NeighborhoodLifting class."""
 
     def setup_method(self):
@@ -16,7 +17,7 @@ class TestCellCyclesLifting:
         self.data = load_manual_graph()
 
         # Initialise the NeighborhoodLifting class
-        self.lifting = NeighborhoodLifting()
+        self.lifting = Graph2CellLiftingTransform(NeighborhoodLifting())
 
     def test_lift_topology(self):
         # Test the lift_topology method
