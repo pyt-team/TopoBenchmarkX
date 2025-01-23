@@ -16,16 +16,16 @@ class Set(FeatureLiftingMap):
 
         Parameters
         ----------
-        data : Complex
+        data : Data
             The input data to be lifted.
 
         Returns
         -------
-        Complex
+        Data
             Domain with the lifted features.
         """
         for key, next_key in zip(
-            domain.keys(), domain.keys()[1:], strict=False
+            domain.rank_keys(), domain.rank_keys()[1:], strict=False
         ):
             if domain.features[next_key] is not None:
                 continue

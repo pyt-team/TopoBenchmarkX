@@ -2,13 +2,23 @@ import abc
 
 
 class Data(abc.ABC):
+    """Topological data.
+
+    Parameters
+    ----------
+    incidence : collection[array-like]
+        Incidence matrices.
+    features : collection[array-like]
+        Features.
+    """
+
     def __init__(self, incidence, features):
         self.incidence = incidence
         self.features = features
 
     @abc.abstractmethod
-    def keys(self):
-        pass
+    def rank_keys(self):
+        """Keys to access different rank information."""
 
     def update_features(self, rank, values):
         """Update features.
@@ -34,11 +44,13 @@ class Data(abc.ABC):
             None
             if self.incidence[key] is None
             else self.incidence[key].shape[-1]
-            for key in self.keys()
+            for key in self.rank_keys()
         ]
 
 
 class ComplexData(Data):
+    """Complex."""
+
     def __init__(
         self,
         incidence,
@@ -59,7 +71,6 @@ class ComplexData(Data):
             features = [None for _ in range(len(incidence))]
         else:
             for rank, incidence_ in enumerate(incidence):
-                # TODO: make error message more informative
                 if (
                     features[rank] is not None
                     and features[rank].shape[0] != incidence_.shape[-1]
@@ -68,15 +79,22 @@ class ComplexData(Data):
 
         super().__init__(incidence, features)
 
-    def keys(self):
+    def rank_keys(self):
+        """Keys to access different rank information.
+
+        Returns
+        -------
+        list[int]
+        """
         return list(range(len(self.incidence)))
 
 
 class HypergraphData(Data):
+    """Hypergraph."""
+
     def __init__(
         self,
         incidence_hyperedges,
-        num_hyperedges,
         incidence_0=None,
         x_0=None,
         x_hyperedges=None,
@@ -91,7 +109,22 @@ class HypergraphData(Data):
             self._hyperedges_key: x_hyperedges,
         }
         super().__init__(incidence, features)
-        self.num_hyperedges = num_hyperedges
 
-    def keys(self):
+    @property
+    def num_hyperedges(self):
+        """Number of hyperedges.
+
+        Returns
+        -------
+        int
+        """
+        return self.incidence[self._hyperedges_key].shape[1]
+
+    def rank_keys(self):
+        """Keys to access different rank information.
+
+        Returns
+        -------
+        list[int]
+        """
         return [0, self._hyperedges_key]

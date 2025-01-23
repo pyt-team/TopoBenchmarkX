@@ -21,14 +21,7 @@ class TestHypergraphKHopLifting:
             HypergraphKHopLifting(k_value=2)
         )
 
-        # TODO: delete?
-        # NB: `preserve_edge_attr` is never used? therefore they're equivalent
-        # self.lifting_edge_attr = HypergraphKHopLifting(
-        #     k_value=1, preserve_edge_attr=True
-        # )
-        self.lifting_edge_attr = Graph2HypergraphLiftingTransform(
-            HypergraphKHopLifting(k_value=1)
-        )
+        self.lifting_edge_attr = self.lifting_k1
 
     def test_lift_topology(self, simple_graph_2):
         """Test the lift_topology method.

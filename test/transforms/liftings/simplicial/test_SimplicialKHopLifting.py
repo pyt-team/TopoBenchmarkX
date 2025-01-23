@@ -10,8 +10,6 @@ from topobenchmark.transforms.liftings import (
     SimplicialKHopLifting,
 )
 
-# TODO: rename for consistency?
-
 
 class TestSimplicialKHopLifting:
     """Test the SimplicialKHopLifting class."""

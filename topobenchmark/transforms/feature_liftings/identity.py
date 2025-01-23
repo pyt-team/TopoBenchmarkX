@@ -3,10 +3,8 @@
 from topobenchmark.transforms.feature_liftings.base import FeatureLiftingMap
 
 
-class Identity(FeatureLiftingMap):
+class IdentityFeatureLifting(FeatureLiftingMap):
     """Identity feature lifting map."""
-
-    # TODO: rename to IdentityFeatureLifting
 
     def lift_features(self, domain):
         """Lift features of a domain using identity map."""

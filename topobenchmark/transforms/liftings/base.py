@@ -5,11 +5,11 @@ import abc
 import torch_geometric
 
 from topobenchmark.data.utils import (
+    Complex2ComplexData,
     ComplexData2Dict,
-    Data2NxGraph,
+    Data2Graph,
     HypergraphData2Dict,
     IdentityAdapter,
-    TnxComplex2ComplexData,
 )
 
 
@@ -125,8 +125,8 @@ class Graph2ComplexLiftingTransform(LiftingTransform):
         super().__init__(
             lifting,
             feature_lifting=feature_lifting,
-            data2domain=Data2NxGraph(preserve_edge_attr),
-            domain2domain=TnxComplex2ComplexData(
+            data2domain=Data2Graph(preserve_edge_attr),
+            domain2domain=Complex2ComplexData(
                 neighborhoods=neighborhoods,
                 signed=signed,
                 transfer_features=transfer_features,

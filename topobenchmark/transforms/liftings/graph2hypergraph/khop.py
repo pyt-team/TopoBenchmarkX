@@ -71,10 +71,8 @@ class HypergraphKHopLifting(LiftingMap):
             )
             incidence_1[n, neighbors] = 1
 
-        num_hyperedges = incidence_1.shape[1]
         incidence_1 = torch.Tensor(incidence_1).to_sparse_coo()
         return HypergraphData(
             incidence_hyperedges=incidence_1,
-            num_hyperedges=num_hyperedges,
             x_0=data.x,
         )

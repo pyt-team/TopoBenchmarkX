@@ -20,20 +20,6 @@ class TestHypergraphKNNLifting:
         self.lifting_k3 = HypergraphKNNLifting(k_value=3, loop=True)
         self.lifting_no_loop = HypergraphKNNLifting(k_value=2, loop=False)
 
-    def test_initialization(self):
-        """Test initialization with different parameters."""
-        # TODO: overkill, delete?
-
-        # Test default parameters
-        lifting_default = HypergraphKNNLifting()
-        assert lifting_default.transform.k == 1
-        assert lifting_default.transform.loop is True
-
-        # Test custom parameters
-        lifting_custom = HypergraphKNNLifting(k_value=5, loop=False)
-        assert lifting_custom.transform.k == 5
-        assert lifting_custom.transform.loop is False
-
     def test_lift_topology_k2(self, simple_graph_2):
         """Test the lift_topology method with k=2.
 

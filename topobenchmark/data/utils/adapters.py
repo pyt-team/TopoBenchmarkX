@@ -38,7 +38,7 @@ class IdentityAdapter(Adapter):
         return domain
 
 
-class Data2NxGraph(Adapter):
+class Data2Graph(Adapter):
     """Data to nx.Graph adaptation.
 
     Parameters
@@ -115,10 +115,10 @@ class Data2NxGraph(Adapter):
         return graph
 
 
-class TnxComplex2ComplexData(Adapter):
-    """toponetx.Complex to Complex adaptation.
+class Complex2ComplexData(Adapter):
+    """toponetx.Complex to ComplexData adaptation.
 
-    NB: order of features plays a crucial role, as ``Complex``
+    NB: order of features plays a crucial role, as ``ComplexData``
     simply stores them as lists (i.e. the reference to the indices
     of the simplex are lost).
 
@@ -144,7 +144,7 @@ class TnxComplex2ComplexData(Adapter):
         self.transfer_features = transfer_features
 
     def adapt(self, domain):
-        """Adapt toponetx.Complex to Complex.
+        """Adapt toponetx.Complex to ComplexData.
 
         Parameters
         ----------
@@ -152,10 +152,8 @@ class TnxComplex2ComplexData(Adapter):
 
         Returns
         -------
-        Complex
+        ComplexData
         """
-        # NB: just a slightly rewriting of get_complex_connectivity
-
         practical_dim = (
             domain.practical_dim
             if hasattr(domain, "practical_dim")
@@ -221,7 +219,6 @@ class TnxComplex2ComplexData(Adapter):
             else:
                 raise ValueError("Can't transfer features.")
 
-            # TODO: confirm features are in the right order; update this
             data["features"] = []
             for rank in range(dim + 1):
                 rank_features_dict = get_features("features", rank)
@@ -243,7 +240,7 @@ class ComplexData2Dict(Adapter):
     """ComplexData to dict adaptation."""
 
     def adapt(self, domain):
-        """Adapt Complex to dict.
+        """Adapt ComplexData to dict.
 
         Parameters
         ----------
@@ -267,7 +264,6 @@ class ComplexData2Dict(Adapter):
             for rank, rank_info in enumerate(info):
                 data[f"{connectivity_info}_{rank}"] = rank_info
 
-        # TODO: handle neighborhoods
         data["shape"] = domain.shape
 
         for index, values in enumerate(domain.features):
@@ -291,7 +287,7 @@ class HypergraphData2Dict(Adapter):
         -------
         dict
         """
-        hyperedges_key = domain.keys()[-1]
+        hyperedges_key = domain.rank_keys()[-1]
         return {
             "incidence_hyperedges": domain.incidence[hyperedges_key],
             "num_hyperedges": domain.num_hyperedges,
@@ -301,6 +297,8 @@ class HypergraphData2Dict(Adapter):
 
 
 class AdapterComposition(Adapter):
+    """Composed adapter."""
+
     def __init__(self, adapters):
         super().__init__()
         self.adapters = adapters
@@ -313,7 +311,7 @@ class AdapterComposition(Adapter):
         return domain
 
 
-class TnxComplex2Dict(AdapterComposition):
+class Complex2Dict(AdapterComposition):
     """toponetx.Complex to dict adaptation.
 
     Parameters
@@ -332,7 +330,7 @@ class TnxComplex2Dict(AdapterComposition):
         signed=False,
         transfer_features=True,
     ):
-        tnxcomplex2complex = TnxComplex2ComplexData(
+        tnxcomplex2complex = Complex2ComplexData(
             neighborhoods=neighborhoods,
             signed=signed,
             transfer_features=transfer_features,

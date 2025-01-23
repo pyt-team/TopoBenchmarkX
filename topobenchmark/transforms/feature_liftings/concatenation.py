@@ -16,16 +16,16 @@ class Concatenation(FeatureLiftingMap):
 
         Parameters
         ----------
-        data : Complex
+        data : Data
             The input data to be lifted.
 
         Returns
         -------
-        Complex
+        Data
             Domain with the lifted features.
         """
         for key, next_key in zip(
-            domain.keys(), domain.keys()[1:], strict=False
+            domain.rank_keys(), domain.rank_keys()[1:], strict=False
         ):
             if domain.features[next_key] is not None:
                 continue
@@ -44,7 +44,7 @@ class Concatenation(FeatureLiftingMap):
                 idxs = torch.stack(idxs_list, dim=0)
                 values = domain.features[key][idxs].view(n, -1)
             else:
-                # NB: only works if key represents rank
+                # NB: only works if key is an int representing rank
                 m = domain.features[key].shape[1] * (next_key + 1)
                 values = torch.zeros([0, m])
 
