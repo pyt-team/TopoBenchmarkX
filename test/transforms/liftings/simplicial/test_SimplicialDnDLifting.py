@@ -4,8 +4,9 @@ import random
 
 import torch
 
-from modules.data.utils.utils import load_manual_graph
-from modules.transforms.liftings.graph2simplicial.dnd_lifting import (
+from topobenchmark.data.utils import load_manual_graph
+from topobenchmark.transforms.liftings import (
+    Graph2SimplicialLiftingTransform,
     SimplicialDnDLifting,
 )
 
@@ -18,8 +19,16 @@ class TestSimplicialDnDLifting:
         self.data = load_manual_graph()
 
         # Initialise the SimplicialCliqueLifting class
-        self.lifting_signed = SimplicialDnDLifting(complex_dim=6, signed=True)
-        self.lifting_unsigned = SimplicialDnDLifting(complex_dim=6, signed=False)
+        lifting_map = SimplicialDnDLifting(complex_dim=6)
+
+        self.lifting_signed = Graph2SimplicialLiftingTransform(
+            lifting=lifting_map,
+            signed=True,
+        )
+        self.lifting_unsigned = Graph2SimplicialLiftingTransform(
+            lifting=lifting_map,
+            signed=False,
+        )
 
         random.seed(42)
 
@@ -47,10 +56,14 @@ class TestSimplicialDnDLifting:
             ]
         )
 
-        U, S_unsigned, V = torch.svd(lifted_data_unsigned.incidence_1.to_dense())
+        U, S_unsigned, V = torch.svd(
+            lifted_data_unsigned.incidence_1.to_dense()
+        )
         U, S_signed, V = torch.svd(lifted_data_signed.incidence_1.to_dense())
         assert torch.allclose(
-            expected_incidence_1_singular_values_unsigned, S_unsigned, atol=1.0e-04
+            expected_incidence_1_singular_values_unsigned,
+            S_unsigned,
+            atol=1.0e-04,
         ), "Something is wrong with unsigned incidence_1 (nodes to edges)."
         assert torch.allclose(
             expected_incidence_1_singular_values_signed, S_signed, atol=1.0e-04
@@ -122,10 +135,14 @@ class TestSimplicialDnDLifting:
             ]
         )
 
-        U, S_unsigned, V = torch.svd(lifted_data_unsigned.incidence_2.to_dense())
+        U, S_unsigned, V = torch.svd(
+            lifted_data_unsigned.incidence_2.to_dense()
+        )
         U, S_signed, V = torch.svd(lifted_data_signed.incidence_2.to_dense())
         assert torch.allclose(
-            expected_incidence_2_singular_values_unsigned, S_unsigned, atol=1.0e-04
+            expected_incidence_2_singular_values_unsigned,
+            S_unsigned,
+            atol=1.0e-04,
         ), "Something is wrong with unsigned incidence_2 (edges to triangles)."
         assert torch.allclose(
             expected_incidence_2_singular_values_signed, S_signed, atol=1.0e-04
@@ -253,10 +270,14 @@ class TestSimplicialDnDLifting:
             ]
         )
 
-        U, S_unsigned, V = torch.svd(lifted_data_unsigned.incidence_3.to_dense())
+        U, S_unsigned, V = torch.svd(
+            lifted_data_unsigned.incidence_3.to_dense()
+        )
         U, S_signed, V = torch.svd(lifted_data_signed.incidence_3.to_dense())
         assert torch.allclose(
-            expected_incidence_3_singular_values_unsigned, S_unsigned, atol=1.0e-04
+            expected_incidence_3_singular_values_unsigned,
+            S_unsigned,
+            atol=1.0e-04,
         ), "Something is wrong with unsigned incidence_3 (edges to tetrahedrons)."
         assert torch.allclose(
             expected_incidence_3_singular_values_signed, S_signed, atol=1.0e-04
@@ -384,10 +405,14 @@ class TestSimplicialDnDLifting:
             ]
         )
 
-        U, S_unsigned, V = torch.svd(lifted_data_unsigned.incidence_4.to_dense())
+        U, S_unsigned, V = torch.svd(
+            lifted_data_unsigned.incidence_4.to_dense()
+        )
         U, S_signed, V = torch.svd(lifted_data_signed.incidence_4.to_dense())
         assert torch.allclose(
-            expected_incidence_4_singular_values_unsigned, S_unsigned, atol=1.0e-04
+            expected_incidence_4_singular_values_unsigned,
+            S_unsigned,
+            atol=1.0e-04,
         ), "Something is wrong with unsigned incidence_4."
         assert torch.allclose(
             expected_incidence_4_singular_values_signed, S_signed, atol=1.0e-04
@@ -459,10 +484,14 @@ class TestSimplicialDnDLifting:
             ]
         )
 
-        U, S_unsigned, V = torch.svd(lifted_data_unsigned.incidence_5.to_dense())
+        U, S_unsigned, V = torch.svd(
+            lifted_data_unsigned.incidence_5.to_dense()
+        )
         U, S_signed, V = torch.svd(lifted_data_signed.incidence_5.to_dense())
         assert torch.allclose(
-            expected_incidence_5_singular_values_unsigned, S_unsigned, atol=1.0e-04
+            expected_incidence_5_singular_values_unsigned,
+            S_unsigned,
+            atol=1.0e-04,
         ), "Something is wrong with unsigned incidence_5."
         assert torch.allclose(
             expected_incidence_5_singular_values_signed, S_signed, atol=1.0e-04

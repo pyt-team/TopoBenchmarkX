@@ -1,46 +1,76 @@
+"""This modules implements the DnD lifting.
+
+The DnD lifting introduces a novel, non-deterministic, and somewhat
+lighthearted approach to transforming graphs into simplicial complexes.
+Inspired by the game mechanics of Dungeons & Dragons (D&D), this method
+incorporates elements of randomness and character attributes to determine
+the formation of simplices. This lifting aims to add an element of whimsy
+and unpredictability to the graph-to-simplicial complex transformation
+process, while still providing a serious and fully functional methodology.
+
+Each vertex in the graph is assigned the following attributes: degree centrality,
+clustering coefficient, closeness centrality, eigenvector centrality,
+betweenness centrality, and pagerank.
+Simplices are created based on the neighborhood within a distance determined by
+a D20 dice roll + the attribute value. The randomness from the dice roll,
+modified by the node's attributes, ensures a non-deterministic process for each
+lifting. The dice roll is influenced by different attributes based on the level
+of the simplex being formed. The different attributes for different levels of
+simplices are used in the order shown above, based on the role of those attributes
+in the context of the graph structure.
+"""
+
 import random
 from itertools import combinations
 
 import networkx as nx
+import torch
 from toponetx.classes import SimplicialComplex
-from torch_geometric.data import Data
 
-from modules.transforms.liftings.graph2simplicial.base import Graph2SimplicialLifting
+from topobenchmark.transforms.liftings import LiftingMap
 
 
-class SimplicialDnDLifting(Graph2SimplicialLifting):
-    r"""Lifts graphs to simplicial complex domain using a Dungeons & Dragons inspired system.
+class SimplicialDnDLifting(LiftingMap):
+    """Lifts graphs to simplicial complex domain
+
+    Uses a Dungeons & Dragons inspired system.
 
     Parameters
     ----------
-    **kwargs : optional
-        Additional arguments for the class.
+    complex_dim : int
+        Dimension of the subcomplex.
     """
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, complex_dim=2):
+        super().__init__()
+        self.complex_dim = complex_dim
 
-    def lift_topology(self, data: Data) -> dict:
-        r"""Lifts the topology of a graph to a simplicial complex using Dungeons & Dragons (D&D) inspired mechanics.
+    def lift(self, domain):
+        """Lifts the topology of a graph to a simplicial complex.
+
+        Uses Dungeons & Dragons (D&D) inspired mechanics.
 
         Parameters
         ----------
-        data : Data
-            The input data to be lifted.
+        domain : nx.Graph
+            Graph to be lifted.
 
         Returns
         -------
-        dict
-            The lifted topology.
+        toponetx.SimplicialComplex
+            Lifted simplicial complex.
         """
-        graph = self._generate_graph_from_data(data)
+        graph = domain
+
         simplicial_complex = SimplicialComplex()
 
         characters = self._assign_attributes(graph)
         simplices = [set() for _ in range(2, self.complex_dim + 1)]
 
         for node in graph.nodes:
-            simplicial_complex.add_node(node, features=data.x[node])
+            simplicial_complex.add_node(
+                node, x=torch.tensor(domain.nodes[node]["x"])
+            )
 
         for node in graph.nodes:
             character = characters[node]
@@ -57,7 +87,10 @@ class SimplicialDnDLifting(Graph2SimplicialLifting):
         for set_k_simplices in simplices:
             simplicial_complex.add_simplices_from(list(set_k_simplices))
 
-        return self._get_lifted_topology(simplicial_complex, graph)
+        # because ComplexData pads unexisting dimensions with empty matrices
+        simplicial_complex.practical_dim = self.complex_dim
+
+        return simplicial_complex
 
     def _assign_attributes(self, graph):
         """Assign D&D-inspired attributes based on node properties."""
@@ -81,7 +114,10 @@ class SimplicialDnDLifting(Graph2SimplicialLifting):
         return attributes
 
     def _roll_dice(self, attributes, k):
-        """Simulate a D20 dice roll influenced by node attributes where a different attribute is used based on the simplex level."""
+        """Simulate a D20 dice roll influenced by node attributes.
+
+        A different attribute is used based on the simplex level.
+        """
 
         attribute = None
         if k == 1:
