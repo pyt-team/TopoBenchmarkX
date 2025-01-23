@@ -3,7 +3,8 @@
 import torch
 import torch_geometric
 
-from modules.transforms.liftings.graph2simplicial.neighborhood_lifting import (
+from topobenchmark.transforms.liftings import (
+    Graph2SimplicialLiftingTransform,
     NeighborhoodComplexLifting,
 )
 
@@ -22,7 +23,7 @@ def create_test_graph():
     )
 
 
-class TestSimplicialCliqueLifting:
+class TestNeighborhoodComplexLifting:
     """Test the SimplicialCliqueLifting class."""
 
     def setup_method(self):
@@ -30,8 +31,14 @@ class TestSimplicialCliqueLifting:
         self.data = create_test_graph()  # load_manual_graph()
 
         # Initialise the SimplicialCliqueLifting class
-        self.lifting_signed = NeighborhoodComplexLifting(signed=True)
-        self.lifting_unsigned = NeighborhoodComplexLifting(signed=False)
+        lifting_map = NeighborhoodComplexLifting()
+
+        self.lifting_signed = Graph2SimplicialLiftingTransform(
+            lifting=lifting_map, signed=True, data2domain="Identity"
+        )
+        self.lifting_unsigned = Graph2SimplicialLiftingTransform(
+            lifting=lifting_map, signed=False, data2domain="Identity"
+        )
 
     def test_lift_topology(self):
         """Test the lift_topology method."""
@@ -39,7 +46,6 @@ class TestSimplicialCliqueLifting:
         # Test the lift_topology method
         lifted_data_signed = self.lifting_signed.forward(self.data.clone())
         lifted_data_unsigned = self.lifting_unsigned.forward(self.data.clone())
-        print(lifted_data_signed)
 
         expected_incidence_1 = torch.tensor(
             [
@@ -52,7 +58,8 @@ class TestSimplicialCliqueLifting:
         )
 
         assert (
-            abs(expected_incidence_1) == lifted_data_unsigned.incidence_1.to_dense()
+            abs(expected_incidence_1)
+            == lifted_data_unsigned.incidence_1.to_dense()
         ).all(), f"Something is wrong with unsigned incidence_1 (nodes to edges).\n{abs(expected_incidence_1) - lifted_data_unsigned.incidence_1.to_dense()}"
         assert (
             expected_incidence_1 == lifted_data_signed.incidence_1.to_dense()
@@ -72,7 +79,8 @@ class TestSimplicialCliqueLifting:
         )
 
         assert (
-            abs(expected_incidence_2) == lifted_data_unsigned.incidence_2.to_dense()
+            abs(expected_incidence_2)
+            == lifted_data_unsigned.incidence_2.to_dense()
         ).all(), f"Something is wrong with unsigned incidence_2 (edges to triangles).\n{abs(expected_incidence_2) - lifted_data_unsigned.incidence_2.to_dense()}"
         assert (
             expected_incidence_2 == lifted_data_signed.incidence_2.to_dense()

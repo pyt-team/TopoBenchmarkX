@@ -1,37 +1,56 @@
+r"""This module implements the neighborhood/Dowker lifting.
+
+This lifting constructs a neighborhood simplicial complex as it is
+`usually defined <https://mathworld.wolfram.com/NeighborhoodComplex.html>`_
+in the field of topological combinatorics.
+In this lifting, for each vertex in the original graph, its neighborhood is
+the subset of adjacent vertices, and the simplices are these subsets.
+
+That is, if :math:`G = (V, E)` is a graph, then its neighborhood complex
+:math:`N(G)` is a simplicial complex with the vertex set :math:`V` and
+simplices given by subsets :math:`A \subseteq V` such, that
+:math:`\forall a \in A ; \exists v:(a, v) \in E`.
+That is, say, 3 vertices form a simplex iff there's another vertex which
+is adjacent to each of these 3 vertices.
+
+This construction differs from
+`another lifting <https://github.com/pyt-team/challenge-icml-2024/pull/5>`_
+with the similar naming.
+The difference is, for example, that in this construction the edges of an
+original graph doesn't present as the edges in the simplicial complex.
+
+This lifting is a
+`Dowker construction <https://ncatlab.org/nlab/show/Dowker%27s+theorem>`_
+since an edge between two vertices in the graph can be considered as a
+symmetric binary relation between these vertices.
+"""
+
 import torch
 import torch_geometric
 from toponetx.classes import SimplicialComplex
 
-from modules.transforms.liftings.graph2simplicial.base import Graph2SimplicialLifting
+from topobenchmark.transforms.liftings.base import LiftingMap
 
 
-class NeighborhoodComplexLifting(Graph2SimplicialLifting):
-    r"""Lifts graphs to simplicial complex domain by constructing the neighborhood complex[1].
+class NeighborhoodComplexLifting(LiftingMap):
+    r"""Lifts graphs to simplicial complex domain by constructing the neighborhood complex."""
 
-    Parameters
-    ----------
-    **kwargs : optional
-        Additional arguments for the class.
-    """
-
-    def __init__(self, **kwargs):
-        self.contains_edge_attr = False
-        super().__init__(**kwargs)
-
-    def lift_topology(self, data: torch_geometric.data.Data) -> dict:
-        r"""Lifts the topology of a graph to a simplicial complex by identifying the cliques as k-simplices.
+    def lift(self, domain):
+        r"""Lift the topology to simplicial complex domain.
 
         Parameters
         ----------
-        data : torch_geometric.data.Data
+        domain : torch_geometric.data.Data
             The input data to be lifted.
 
         Returns
         -------
-        dict
-            The lifted topology.
+        toponetx.SimplicialComplex
+            Lifted simplicial complex.
         """
-        undir_edge_index = torch_geometric.utils.to_undirected(data.edge_index)
+        undir_edge_index = torch_geometric.utils.to_undirected(
+            domain.edge_index
+        )
 
         simplices = [
             set(
@@ -41,12 +60,9 @@ class NeighborhoodComplexLifting(Graph2SimplicialLifting):
             for i in torch.unique(undir_edge_index[0])
         ]
 
-        node_features = {i: data.x[i, :] for i in range(data.x.shape[0])}
+        node_features = {i: domain.x[i, :] for i in range(domain.x.shape[0])}
 
         simplicial_complex = SimplicialComplex(simplices)
-        self.complex_dim = simplicial_complex.dim
-        simplicial_complex.set_simplex_attributes(node_features, name="features")
+        simplicial_complex.set_simplex_attributes(node_features, name="x")
 
-        graph = simplicial_complex.graph_skeleton()
-
-        return self._get_lifted_topology(simplicial_complex, graph)
+        return simplicial_complex
