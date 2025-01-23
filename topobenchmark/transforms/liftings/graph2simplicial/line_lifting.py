@@ -1,73 +1,108 @@
+r"""This module implements the line lifting.
+
+This lifting constructs a simplicial complex called the *Line simplicial complex*.
+This is a generalization of the so-called
+`Line graph <https://en.wikipedia.org/wiki/Line_graph_.
+In vanilla line graph, nodes are edges from the original graph and two nodes are
+connected with an edge if corresponding edges are adjacent in the original graph.
+
+The line simplicial complex is a clique complex of the line graph.
+That is, if several edges share a node in the original graph,
+the corresponding vertices in the line complex are going to be connected with
+a simplex.
+
+So, the line lifting performs the following:
+
+1. For a graph :math:`G` we create its *line graph* :math:`L(G)`.
+  The *line* (or *dual*) *graph* is a graph created from the initial one
+  by considering the edges in :math:`G` as the vertices in :math:`L(G)`
+  and the edges in :math:`L(G)` correspond to the vertices in :math:`G`.
+
+2. During this procedure, we obtain a graph.
+  It is easy to see that such graph contains cliques for basically each
+  node in initial graph :math:`G`. That is, if :math:`v \in G`
+  has a degree :math:`d`, then there's a clique on :math:`d` vertices in
+  math:`L(G)`.
+
+3. Therefore let's consider a clique complex
+  :math:`X(L(G))` of math:`L(G)` creating :math:`(d - 1)`-simplices for each
+  clique on :math:`d` vertices, that is, for each node in math:`G` of degree
+  :math:`d`.
+
+
+When creating a line graph, we need to transfer the features from :math:`G` to
+:math:`L(G)`. That is, for a vertex :math:`v \in L(G)`, which correponds to
+an edge :math:`e \in G` we need to set a feature vector.
+This is basically done as a mean feature of the nodes that are adjacent to :math:`e`,
+that is, if `:math:`e = ( a , b )`, then
+
+.. math::
+
+    f v := f a + f b 2 .
+"""
+
 import networkx as nx
-import torch_geometric
+import torch
 from toponetx.classes import SimplicialComplex
 
-from modules.transforms.liftings.graph2simplicial.base import Graph2SimplicialLifting
+from topobenchmark.transforms.liftings.base import LiftingMap
 
 
-class SimplicialLineLifting(Graph2SimplicialLifting):
+class SimplicialLineLifting(LiftingMap):
     r"""Lifts graphs to a simplicial complex domain by considering line simplicial complex.
 
     Line simplicial complex is a clique complex of the line graph. Line graph is a graph, in which
     the vertices are the edges in the initial graph, and two vertices are adjacent if the corresponding
     edges are adjacent in the initial graph.
-
-    Parameters
-    ----------
-    **kwargs : optional
-        Additional arguments for the class.
     """
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-
-    def lift_topology(self, data: torch_geometric.data.Data) -> dict:
-        r"""Lifts the topology of a graph to simplicial domain via line simplicial complex construction.
+    def lift(self, domain):
+        r"""Lift the topology of a graph to a simplicial complex.
 
         Parameters
         ----------
-        data : torch_geometric.data.Data
-            The input data to be lifted.
+        domain : nx.Graph
+            Graph to be lifted.
 
         Returns
-        ----------
-        dict
-            The lifted topology.
+        -------
+        toponetx.SimplicialComplex
+            Lifted simplicial complex.
         """
-
-        graph = self._generate_graph_from_data(data)
+        graph = domain
         line_graph = nx.line_graph(graph)
 
         node_features = {
-            node: ((data.x[node[0], :] + data.x[node[1], :]) / 2)
+            node: (
+                (
+                    torch.tensor(graph.nodes[node[0]]["x"])
+                    + torch.tensor(graph.nodes[node[1]]["x"])
+                )
+                / 2
+            )
             for node in list(line_graph.nodes)
         }
 
         cliques = nx.find_cliques(line_graph)
-        simplices = list(cliques)  # list(map(lambda x: set(x), cliques))
+        simplices = list(cliques)
 
         # we need to rename simplices here since now vertices are named as pairs
-        self.rename_vertices_dict = {node: i for i, node in enumerate(line_graph.nodes)}
-        self.rename_vertices_dict_inverse = {
-            i: node for node, i in self.rename_vertices_dict.items()
+        rename_vertices_dict = {
+            node: i for i, node in enumerate(line_graph.nodes)
         }
-        renamed_line_graph = nx.relabel_nodes(line_graph, self.rename_vertices_dict)
-
         renamed_simplices = [
-            {self.rename_vertices_dict[vertex] for vertex in simplex}
+            {rename_vertices_dict[vertex] for vertex in simplex}
             for simplex in simplices
         ]
 
         renamed_node_features = {
-            self.rename_vertices_dict[node]: value
+            rename_vertices_dict[node]: value
             for node, value in node_features.items()
         }
 
         simplicial_complex = SimplicialComplex(simplices=renamed_simplices)
-        self.complex_dim = simplicial_complex.dim
-
         simplicial_complex.set_simplex_attributes(
-            renamed_node_features, name="features"
+            renamed_node_features, name="x"
         )
 
-        return self._get_lifted_topology(simplicial_complex, renamed_line_graph)
+        return simplicial_complex

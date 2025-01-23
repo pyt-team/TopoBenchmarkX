@@ -3,7 +3,8 @@
 import torch
 import torch_geometric
 
-from modules.transforms.liftings.graph2simplicial.line_lifting import (
+from topobenchmark.transforms.liftings import (
+    Graph2SimplicialLiftingTransform,
     SimplicialLineLifting,
 )
 
@@ -31,9 +32,17 @@ class TestSimplicialLineLifting:
         # Load the graph
         self.data = create_test_graph()  # load_manual_graph()
 
+        lifting_map = SimplicialLineLifting()
+
         # Initialise the SimplicialCliqueLifting class
-        self.lifting_signed = SimplicialLineLifting(signed=True)
-        self.lifting_unsigned = SimplicialLineLifting(signed=False)
+        self.lifting_signed = Graph2SimplicialLiftingTransform(
+            lifting=lifting_map,
+            signed=True,
+        )
+        self.lifting_unsigned = Graph2SimplicialLiftingTransform(
+            lifting=lifting_map,
+            signed=False,
+        )
 
     def test_lift_topology(self):
         """Test the lift_topology method."""
@@ -53,11 +62,12 @@ class TestSimplicialLineLifting:
             ]
         )
 
-        print(lifted_data_signed.incidence_1.to_dense())
-
         assert (
-            abs(expected_incidence_1) == lifted_data_unsigned.incidence_1.to_dense()
-        ).all(), "Something is wrong with unsigned incidence_1 (nodes to edges)."
+            abs(expected_incidence_1)
+            == lifted_data_unsigned.incidence_1.to_dense()
+        ).all(), (
+            "Something is wrong with unsigned incidence_1 (nodes to edges)."
+        )
         assert (
             expected_incidence_1 == lifted_data_signed.incidence_1.to_dense()
         ).all(), "Something is wrong with signed incidence_1 (nodes to edges)."
@@ -77,8 +87,11 @@ class TestSimplicialLineLifting:
         )
 
         assert (
-            abs(expected_incidence_2) == lifted_data_unsigned.incidence_2.to_dense()
+            abs(expected_incidence_2)
+            == lifted_data_unsigned.incidence_2.to_dense()
         ).all(), "Something is wrong with unsigned incidence_2 (edges to triangles)."
         assert (
             expected_incidence_2 == lifted_data_signed.incidence_2.to_dense()
-        ).all(), "Something is wrong with signed incidence_2 (edges to triangles)."
+        ).all(), (
+            "Something is wrong with signed incidence_2 (edges to triangles)."
+        )
