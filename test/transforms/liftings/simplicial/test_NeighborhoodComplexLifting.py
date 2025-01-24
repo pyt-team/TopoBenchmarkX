@@ -1,10 +1,10 @@
-
 import networkx as nx
 import torch
 from torch_geometric.utils.convert import from_networkx
 
-from modules.data.utils.utils import load_manual_graph
-from modules.transforms.liftings.graph2simplicial.neighborhood_complex_lifting import (
+from topobenchmark.data.utils import load_manual_graph
+from topobenchmark.transforms.liftings import (
+    Graph2SimplicialLiftingTransform,
     NeighborhoodComplexLifting,
 )
 
@@ -17,11 +17,24 @@ class TestNeighborhoodComplexLifting:
         self.data = load_manual_graph()
 
         # Initialize the NeighborhoodComplexLifting class for dim=3
-        self.lifting_signed = NeighborhoodComplexLifting(complex_dim=3, signed=True)
-        self.lifting_unsigned = NeighborhoodComplexLifting(complex_dim=3, signed=False)
-        self.lifting_high = NeighborhoodComplexLifting(complex_dim=7, signed=False)
+        self.lifting_signed = Graph2SimplicialLiftingTransform(
+            NeighborhoodComplexLifting(complex_dim=3),
+            signed=True,
+            to_undirected=True,
+        )
+        self.lifting_unsigned = Graph2SimplicialLiftingTransform(
+            NeighborhoodComplexLifting(complex_dim=3),
+            signed=False,
+            to_undirected=True,
+        )
+        self.lifting_high = Graph2SimplicialLiftingTransform(
+            NeighborhoodComplexLifting(
+                complex_dim=7,
+            ),
+            to_undirected=True,
+        )
 
-        # Intialize an empty graph for testing purpouses
+        # Intialize an empty graph for testing purposes
         self.empty_graph = nx.empty_graph(10)
         self.empty_data = from_networkx(self.empty_graph)
         self.empty_data["x"] = torch.rand((10, 10))
@@ -36,11 +49,12 @@ class TestNeighborhoodComplexLifting:
         self.random_data = from_networkx(self.random_graph)
         self.random_data["x"] = torch.rand((5, 1))
 
-
-    def has_neighbour(self, simplex_points: list[set]) -> tuple[bool, set[int]]:
-        """ Verifies that the maximal simplices
-            of Data representation of a simplicial complex
-            share a neighbour.
+    def _has_neighbour(
+        self, simplex_points: list[set]
+    ) -> tuple[bool, set[int]]:
+        """Verifies that the maximal simplices
+        of Data representation of a simplicial complex
+        share a neighbour.
         """
         for simplex_point_a in simplex_points:
             for simplex_point_b in simplex_points:
@@ -50,51 +64,56 @@ class TestNeighborhoodComplexLifting:
                 # Search all nodes to check if they are c such that a and b share c as a neighbour
                 for node in self.random_graph.nodes:
                     # They share a neighbour
-                    if self.random_graph.has_edge(simplex_point_a.item(), node) and self.random_graph.has_edge(simplex_point_b.item(), node):
+                    if self.random_graph.has_edge(
+                        simplex_point_a.item(), node
+                    ) and self.random_graph.has_edge(
+                        simplex_point_b.item(), node
+                    ):
                         return True
         return False
 
     def test_lift_topology_random_graph(self):
-        """ Verifies that the lifting procedure works on
+        """Verifies that the lifting procedure works on
         a random graph, that is, checks that the simplices
         generated share a neighbour.
         """
-        lifted_data = self.lifting_high.forward(self.random_data)
-        # For each set of simplices
-        r = max(int(key.split("_")[-1]) for key in list(lifted_data.keys()) if "x_idx_" in key)
-        idx_str = f"x_idx_{r}"
+        graph = self.lifting_high.data2domain(self.random_data)
+        simplicial_complex = self.lifting_high.lifting(graph)
 
         # Go over each (max_dim)-simplex
-        for simplex_points in lifted_data[idx_str]:
-            share_neighbour = self.has_neighbour(simplex_points)
+        for simplex_points in torch.tensor(
+            simplicial_complex.skeleton(simplicial_complex.dim)
+        ):
+            share_neighbour = self._has_neighbour(simplex_points)
             assert share_neighbour, f"The simplex {simplex_points} does not have a common neighbour with all the nodes."
 
     def test_lift_topology_star_graph(self):
-        """ Verifies that the lifting procedure works on
+        """Verifies that the lifting procedure works on
         a small star graph, that is, checks that the simplices
         generated share a neighbour.
         """
-        lifted_data = self.lifting_high.forward(self.star_data)
-        # For each set of simplices
-        r = max(int(key.split("_")[-1]) for key in list(lifted_data.keys()) if "x_idx_" in key)
-        idx_str = f"x_idx_{r}"
+        graph = self.lifting_high.data2domain(self.star_data)
+        simplicial_complex = self.lifting_high.lifting(graph)
 
         # Go over each (max_dim)-simplex
-        for simplex_points in lifted_data[idx_str]:
-            share_neighbour = self.has_neighbour(simplex_points)
+        for simplex_points in torch.tensor(
+            simplicial_complex.skeleton(simplicial_complex.dim)
+        ):
+            share_neighbour = self._has_neighbour(simplex_points)
             assert share_neighbour, f"The simplex {simplex_points} does not have a common neighbour with all the nodes."
 
-
-
     def test_lift_topology_empty_graph(self):
-        """ Test the lift_topology method with an empty graph.
-        """
+        """Test the lift_topology method with an empty graph."""
 
         lifted_data_signed = self.lifting_signed.forward(self.empty_data)
 
-        assert lifted_data_signed.incidence_1.shape[1] == 0, "Something is wrong with signed incidence_1 (nodes to edges)."
+        assert (
+            lifted_data_signed.incidence_1.shape[1] == 0
+        ), "Something is wrong with signed incidence_1 (nodes to edges)."
 
-        assert lifted_data_signed.incidence_2.shape[1] == 0, "Something is wrong with signed incidence_2 (edges to triangles)."
+        assert (
+            lifted_data_signed.incidence_2.shape[1] == 0
+        ), "Something is wrong with signed incidence_2 (edges to triangles)."
 
     def test_lift_topology(self):
         """Test the lift_topology method."""
@@ -105,46 +124,180 @@ class TestNeighborhoodComplexLifting:
 
         expected_incidence_1 = torch.tensor(
             [
-                [-1., -1., -1., -1.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0., 0.],
-                [ 1.,  0.,  0.,  0., -1., -1.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0., 0.],
-                [ 0.,  1.,  0.,  0.,  1.,  0., -1., -1., -1., -1., -1.,  0.,  0.,  0., 0.],
-                [ 0.,  0.,  0.,  0.,  0.,  0.,  1.,  0.,  0.,  0.,  0., -1.,  0.,  0., 0.],
-                [ 0.,  0.,  1.,  0.,  0.,  1.,  0.,  1.,  0.,  0.,  0.,  0.,  0.,  0., 0.],
-                [ 0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  1.,  0.,  0.,  0., -1., -1., 0.],
-                [ 0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  1.,  0.,  1.,  1.,  0., -1.],
-                [ 0.,  0.,  0.,  1.,  0.,  0.,  0.,  0.,  0.,  0.,  1.,  0.,  0.,  1., 1.]
+                [
+                    -1.0,
+                    -1.0,
+                    -1.0,
+                    -1.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                ],
+                [
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    -1.0,
+                    -1.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                ],
+                [
+                    0.0,
+                    1.0,
+                    0.0,
+                    0.0,
+                    1.0,
+                    0.0,
+                    -1.0,
+                    -1.0,
+                    -1.0,
+                    -1.0,
+                    -1.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                ],
+                [
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    -1.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                ],
+                [
+                    0.0,
+                    0.0,
+                    1.0,
+                    0.0,
+                    0.0,
+                    1.0,
+                    0.0,
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                ],
+                [
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    -1.0,
+                    -1.0,
+                    0.0,
+                ],
+                [
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0,
+                    0.0,
+                    1.0,
+                    1.0,
+                    0.0,
+                    -1.0,
+                ],
+                [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0,
+                    0.0,
+                    0.0,
+                    1.0,
+                    1.0,
+                ],
             ]
         )
         assert (
-            abs(expected_incidence_1) == lifted_data_unsigned.incidence_1.to_dense()
-        ).all(), "Something is wrong with unsigned incidence_1 (nodes to edges)."
+            abs(expected_incidence_1)
+            == lifted_data_unsigned.incidence_1.to_dense()
+        ).all(), (
+            "Something is wrong with unsigned incidence_1 (nodes to edges)."
+        )
         assert (
             expected_incidence_1 == lifted_data_signed.incidence_1.to_dense()
         ).all(), "Something is wrong with signed incidence_1 (nodes to edges)."
 
         expected_incidence_2 = torch.tensor(
             [
-                [ 0.],
-                [ 0.],
-                [ 0.],
-                [ 0.],
-                [ 0.],
-                [ 0.],
-                [ 0.],
-                [ 0.],
-                [ 0.],
-                [ 1.],
-                [-1.],
-                [ 0.],
-                [ 0.],
-                [ 0.],
-                [ 1.]
+                [0.0],
+                [0.0],
+                [0.0],
+                [0.0],
+                [0.0],
+                [0.0],
+                [0.0],
+                [0.0],
+                [0.0],
+                [1.0],
+                [-1.0],
+                [0.0],
+                [0.0],
+                [0.0],
+                [1.0],
             ]
         )
 
         assert (
-            abs(expected_incidence_2) == lifted_data_unsigned.incidence_2.to_dense()
+            abs(expected_incidence_2)
+            == lifted_data_unsigned.incidence_2.to_dense()
         ).all(), "Something is wrong with unsigned incidence_2 (edges to triangles)."
         assert (
             expected_incidence_2 == lifted_data_signed.incidence_2.to_dense()
-        ).all(), "Something is wrong with signed incidence_2 (edges to triangles)."
+        ).all(), (
+            "Something is wrong with signed incidence_2 (edges to triangles)."
+        )
