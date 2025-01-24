@@ -6,7 +6,7 @@ import torch
 import torch_geometric
 from topomodelx.utils.sparse import from_sparse
 from toponetx.classes import CellComplex, SimplicialComplex
-from torch_geometric.utils.undirected import is_undirected, to_undirected
+from torch_geometric.utils.convert import to_networkx
 
 from topobenchmark.data.utils.domain import ComplexData
 from topobenchmark.data.utils.utils import (
@@ -45,25 +45,21 @@ class Data2Graph(Adapter):
     ----------
     preserve_edge_attr : bool
         Whether to preserve edge attributes.
+    to_undirected (bool or str, optional): If set to :obj:`True`, will
+        return a :class:`networkx.Graph` instead of a
+        :class:`networkx.DiGraph`.
+        By default, will include all edges and make them undirected.
+        If set to :obj:`"upper"`, the undirected graph will only correspond
+        to the upper triangle of the input adjacency matrix.
+        If set to :obj:`"lower"`, the undirected graph will only correspond
+        to the lower triangle of the input adjacency matrix.
+        Only applicable in case the :obj:`data` object holds a homogeneous
+        graph. (default: :obj:`False`)
     """
 
-    def __init__(self, preserve_edge_attr=False):
+    def __init__(self, preserve_edge_attr=False, to_undirected=True):
         self.preserve_edge_attr = preserve_edge_attr
-
-    def _data_has_edge_attr(self, data: torch_geometric.data.Data) -> bool:
-        r"""Check if the input data object has edge attributes.
-
-        Parameters
-        ----------
-        data : torch_geometric.data.Data
-            The input data.
-
-        Returns
-        -------
-        bool
-            Whether the data object has edge attributes.
-        """
-        return hasattr(data, "edge_attr") and data.edge_attr is not None
+        self.to_undirected = to_undirected
 
     def adapt(self, domain: torch_geometric.data.Data) -> nx.Graph:
         r"""Generate a NetworkX graph from the input data object.
@@ -78,41 +74,17 @@ class Data2Graph(Adapter):
         nx.Graph
             The generated NetworkX graph.
         """
-        # Check if data object have edge_attr, return list of tuples as [(node_id, {'features':data}, 'dim':1)] or ??
-        nodes = [
-            (n, dict(features=domain.x[n], dim=0))
-            for n in range(domain.x.shape[0])
-        ]
-
-        if self.preserve_edge_attr and self._data_has_edge_attr(domain):
-            # In case edge features are given, assign features to every edge
-            # TODO: confirm this is the desired behavior
-            if is_undirected(domain.edge_index, domain.edge_attr):
-                edge_index, edge_attr = (domain.edge_index, domain.edge_attr)
-            else:
-                edge_index, edge_attr = to_undirected(
-                    domain.edge_index, domain.edge_attr
-                )
-
-            edges = [
-                (i.item(), j.item(), dict(features=edge_attr[edge_idx], dim=1))
-                for edge_idx, (i, j) in enumerate(
-                    zip(edge_index[0], edge_index[1], strict=False)
-                )
-            ]
-
-        else:
-            # If edge_attr is not present, return list list of edges
-            edges = [
-                (i.item(), j.item(), {})
-                for i, j in zip(
-                    domain.edge_index[0], domain.edge_index[1], strict=False
-                )
-            ]
-        graph = nx.Graph()
-        graph.add_nodes_from(nodes)
-        graph.add_edges_from(edges)
-        return graph
+        edge_attrs = (
+            "edge_attr"
+            if self.preserve_edge_attr and hasattr(domain, "edge_attr")
+            else None
+        )
+        return to_networkx(
+            domain,
+            to_undirected=self.to_undirected,
+            node_attrs="x",
+            edge_attrs=edge_attrs,
+        )
 
 
 class Complex2ComplexData(Adapter):
@@ -142,6 +114,7 @@ class Complex2ComplexData(Adapter):
         self.neighborhoods = neighborhoods
         self.signed = signed
         self.transfer_features = transfer_features
+        self._features_key = "x"
 
     def adapt(self, domain):
         """Adapt toponetx.Complex to ComplexData.
@@ -221,9 +194,9 @@ class Complex2ComplexData(Adapter):
 
             data["features"] = []
             for rank in range(dim + 1):
-                rank_features_dict = get_features("features", rank)
+                rank_features_dict = get_features(self._features_key, rank)
                 if rank_features_dict:
-                    rank_features = torch.stack(
+                    rank_features = torch.tensor(
                         list(rank_features_dict.values())
                     )
                 else:

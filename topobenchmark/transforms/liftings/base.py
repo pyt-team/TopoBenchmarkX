@@ -39,7 +39,7 @@ class LiftingTransform(torch_geometric.transforms.BaseTransform):
         data2domain=None,
         domain2dict=None,
         domain2domain=None,
-        feature_lifting="ProjectionSum",
+        feature_lifting=None,
     ):
         if data2domain is None or data2domain == "Identity":
             data2domain = IdentityAdapter()
@@ -54,6 +54,9 @@ class LiftingTransform(torch_geometric.transforms.BaseTransform):
             from topobenchmark.transforms import TRANSFORMS
 
             lifting = TRANSFORMS[lifting]()
+
+        if feature_lifting is None:
+            feature_lifting = "IdentityFeatureLifting"
 
         if isinstance(feature_lifting, str):
             from topobenchmark.transforms import TRANSFORMS
@@ -106,6 +109,17 @@ class Graph2ComplexLiftingTransform(LiftingTransform):
     preserve_edge_attr : bool
         Whether to preserve edge attributes.
         Ignored if ``data2domain`` is not None.
+    to_undirected (bool or str, optional): If set to :obj:`True`, will
+        return a :class:`networkx.Graph` instead of a
+        :class:`networkx.DiGraph`.
+        By default, will include all edges and make them undirected.
+        If set to :obj:`"upper"`, the undirected graph will only correspond
+        to the upper triangle of the input adjacency matrix.
+        If set to :obj:`"lower"`, the undirected graph will only correspond
+        to the lower triangle of the input adjacency matrix.
+        Only applicable in case the :obj:`data` object holds a homogeneous
+        graph. (default: :obj:`False`)
+        Ignored if ``data2domain`` is not None.
     neighborhoods : list, optional
         List of neighborhoods of interest.
     signed : bool, optional
@@ -122,13 +136,14 @@ class Graph2ComplexLiftingTransform(LiftingTransform):
         lifting,
         feature_lifting="ProjectionSum",
         preserve_edge_attr=False,
+        to_undirected=True,
         neighborhoods=None,
         signed=False,
         transfer_features=True,
         data2domain=None,
     ):
         if data2domain is None:
-            data2domain = Data2Graph(preserve_edge_attr)
+            data2domain = Data2Graph(preserve_edge_attr, to_undirected)
 
         super().__init__(
             lifting,

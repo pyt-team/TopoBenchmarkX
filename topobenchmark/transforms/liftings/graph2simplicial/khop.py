@@ -79,4 +79,7 @@ class SimplicialKHopLifting(LiftingMap):
                 list_k_simplices = list_k_simplices[: self.max_k_simplices]
             simplicial_complex.add_simplices_from(list_k_simplices)
 
+        # because ComplexData pads unexisting dimensions with empty matrices
+        simplicial_complex.practical_dim = self.complex_dim
+
         return simplicial_complex
