@@ -6,8 +6,9 @@ import networkx as nx
 import torch
 from torch_geometric.data import Data
 
-from modules.data.utils.utils import load_manual_graph
-from modules.transforms.liftings.graph2simplicial.latentclique_lifting import (
+from topobenchmark.data.utils import load_manual_graph
+from topobenchmark.transforms.liftings import (
+    Graph2SimplicialLiftingTransform,
     LatentCliqueLifting,
 )
 
@@ -38,7 +39,7 @@ def create_clique_graph(num_nodes=8):
     return Data(x=x, edge_index=edge_index)
 
 
-class TestLatentCliqueCoverLifting:
+class TestLatentCliqueLifting:
     """Test the LatentCliqueCoverLifting class."""
 
     def setup_method(self):
@@ -46,8 +47,15 @@ class TestLatentCliqueCoverLifting:
         self.data_test_one = create_clique_graph()
         self.data_test_two = load_manual_graph()
         # Initialise the SimplicialCliqueLifting class
-        self.lifting_edge_prob_one = LatentCliqueLifting(edge_prob_mean=1)
-        self.lifting_edge_prob_any = LatentCliqueLifting(edge_prob=random.uniform(0, 1))
+        self.lifting_edge_prob_one = Graph2SimplicialLiftingTransform(
+            LatentCliqueLifting(edge_prob_mean=1),
+            data2domain="Identity",
+        )
+        self.lifting_edge_prob_any = Graph2SimplicialLiftingTransform(
+            # LatentCliqueLifting(edge_prob=random.uniform(0, 1)),
+            LatentCliqueLifting(edge_prob_mean=random.uniform(0, 1)),
+            data2domain="Identity",
+        )
 
     def test_lift_topology(self):
         """Test the lift_topology method."""
@@ -66,7 +74,7 @@ class TestLatentCliqueCoverLifting:
         # (or, equivalently, the SC has a simplex in its facests set if complex_dim = |maximal_clique|-1)
 
         # Convert adjacency matrix to NetworkX graph
-        G_from_latent_complex = nx.from_numpy_matrix(
+        G_from_latent_complex = nx.from_numpy_array(
             edge_prob_one_adj.to_dense().numpy()
         )
         G_input = nx.Graph()
@@ -88,14 +96,16 @@ class TestLatentCliqueCoverLifting:
         # (or, equivalently, there is no subset of the 1-skeleton of the SC isomorphic to the input graph)
 
         # Convert adjacency matrix to NetworkX graph
-        G_from_latent_complex = nx.from_numpy_matrix(
+        G_from_latent_complex = nx.from_numpy_array(
             edge_prob_any_adj.to_dense().numpy()
         )
         G_input = nx.Graph()
         G_input.add_edges_from(self.data_test_two.edge_index.t().tolist())
 
         # Edges are Undirected
-        latent_edge_set = {tuple(sorted(edge)) for edge in G_from_latent_complex.edges}
+        latent_edge_set = {
+            tuple(sorted(edge)) for edge in G_from_latent_complex.edges
+        }
         input_edge_set = {tuple(sorted(edge)) for edge in G_input.edges}
 
         assert input_edge_set.issubset(

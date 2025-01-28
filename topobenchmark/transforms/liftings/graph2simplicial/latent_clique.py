@@ -6,13 +6,16 @@ from scipy.sparse import csr_matrix
 from scipy.special import gammaln, logsumexp
 from tqdm.auto import tqdm
 
-from modules.transforms.liftings.graph2simplicial.clique_lifting import (
-    Graph2SimplicialLifting,
+from topobenchmark.data.utils import Data2Graph
+from topobenchmark.transforms.liftings.base import (
+    LiftingMap,
+)
+from topobenchmark.transforms.liftings.graph2simplicial.clique import (
     SimplicialCliqueLifting,
 )
 
 
-class LatentCliqueLifting(Graph2SimplicialLifting):
+class LatentCliqueLifting(LiftingMap):
     r"""Lifts graphs to cell complexes by identifying the cycles as 2-cells.
 
     Parameters
@@ -31,8 +34,8 @@ class LatentCliqueLifting(Graph2SimplicialLifting):
         Number of iterations for sampling, by default None.
     init : str, optional
         Initialization method for the clique cover matrix, by default "edges".
-    **kwargs : optional
-        Additional arguments for the class.
+    verbose : bool, optional
+        Whether to display verbose output, by default False.
     """
 
     def __init__(
@@ -41,26 +44,23 @@ class LatentCliqueLifting(Graph2SimplicialLifting):
         edge_prob_var: float = 0.05,
         it=None,
         init="edges",
-        **kwargs,
+        verbose=False,
     ):
-        super().__init__(**kwargs)
+        super().__init__()
         self.edge_prob_mean = edge_prob_mean
         min_var = self.edge_prob_mean * (1 - self.edge_prob_mean)
         self.edge_prob_var = min(edge_prob_var, 0.5 * min_var)
         self.it = it
         self.init = init
+        self.verbose = verbose
 
-    def lift_topology(
-        self, data: torch_geometric.data.Data, verbose: bool = False
-    ) -> dict:
+    def lift(self, data: torch_geometric.data.Data) -> dict:
         r"""Finds the cycles of a graph and lifts them to 2-cells.
 
         Parameters
         ----------
         data : torch_geometric.data.Data
             The input data to be lifted.
-        verbose : bool, optional
-            Whether to display verbose output, by default False.
 
         Returns
         -------
@@ -82,15 +82,23 @@ class LatentCliqueLifting(Graph2SimplicialLifting):
             edge_prob_var=self.edge_prob_var,
         )
         it = self.it if self.it is not None else data.num_edges
-        mod.sample(sample_hypers=True, num_iters=it, do_gibbs=False, verbose=verbose)
+        mod.sample(
+            sample_hypers=True,
+            num_iters=it,
+            do_gibbs=False,
+            verbose=self.verbose,
+        )
 
         # # Translate fitted model to a new topology
         cic = mod.Z.T @ mod.Z
         adj = np.minimum(cic - np.diag(np.diag(cic)), 1)
         edges = np.array(np.where(adj == 1))
         edges = torch.LongTensor(edges).to(data.edge_index.device)
+
         new_data = torch_geometric.data.Data(x=data.x, edge_index=edges)
-        return SimplicialCliqueLifting().lift_topology(new_data)
+
+        graph = Data2Graph().adapt(new_data)
+        return SimplicialCliqueLifting().lift(graph)
 
 
 class _LatentCliqueModel:
@@ -162,6 +170,8 @@ class _LatentCliqueModel:
         init="edges",
         seed=None,
     ):
+        # TODO: use .fit or .set_adj instead?
+
         self.init = init
         self.adj = adj
         self.num_nodes = adj.shape[0]
@@ -206,7 +216,9 @@ class _LatentCliqueModel:
         # and therefore larger cliques. The mean, var parameterization is transformed
         # to the alpha, beta parameterization of the Beta distribution.
         self._sample_edge_prob = edge_prob_var > 0 and edge_prob_mean < 1
-        self._edge_prob_params = _get_beta_params(edge_prob_mean, edge_prob_var)
+        self._edge_prob_params = _get_beta_params(
+            edge_prob_mean, edge_prob_var
+        )
 
     def _init_Z(self):
         """Initialize the clique cover matrix Z."""
@@ -334,7 +346,12 @@ class _LatentCliqueModel:
         )
 
         # Compute logD
-        logD = gammaln(1 + c) - gammaln(c + sigma) - gammaln(1 - sigma) - gammaln(N + c)
+        logD = (
+            gammaln(1 + c)
+            - gammaln(c + sigma)
+            - gammaln(1 - sigma)
+            - gammaln(N + c)
+        )
 
         # Compute the rest of the likelihood
         ll = ll + logC + N * logD
@@ -391,9 +408,11 @@ class _LatentCliqueModel:
             a = self._edge_prob_params[0]
             b = self._edge_prob_params[1]
             # lp ratio comes from a beta distribution
-            lp_ratio = (a - 1) * (np.log(edge_prob_prop) - np.log(self.edge_prob)) + (
-                b - 1
-            ) * (np.log(1 - edge_prob_prop) - np.log(1 - self.edge_prob))
+            lp_ratio = (a - 1) * (
+                np.log(edge_prob_prop) - np.log(self.edge_prob)
+            ) + (b - 1) * (
+                np.log(1 - edge_prob_prop) - np.log(1 - self.edge_prob)
+            )
             lratio = ll_new - ll_old + lp_ratio
             r = np.log(self.rng.random())
             if r < lratio:
@@ -712,7 +731,9 @@ class _LatentCliqueModel:
                 lpmerge = np.log(self.K / self.lamb)
                 ll_old = self.loglikZ()
 
-                laccept = lpmerge - lpsplit + lqsplit - lqmerge + ll_prop - ll_old
+                laccept = (
+                    lpmerge - lpsplit + lqsplit - lqmerge + ll_prop - ll_old
+                )
                 r = np.log(self.rng.random())
 
                 if r < laccept:
@@ -805,33 +826,3 @@ def _sample_from_ibp(K, alpha, sigma, c, seed=None):
 
     # delte empty cliques
     return Z[np.where(Z.sum(1) > 1)[0]]
-
-
-
-# if __name__ == "__main__":
-#     import networkx as nx
-
-#     K, alpha, sigma, c, pie = 200, 3, 0.7, 1, 1.0
-#     Z = _sample_from_ibp(K, alpha, sigma, c)
-
-#     cic = Z.T @ Z
-#     adj = np.minimum(cic - np.diag(np.diag(cic)), 1)
-
-#     # delete edges with prob 1 - exp(pi^2)
-#     prob = np.exp(-((1 - pie) ** 2))
-#     triu_mask = np.triu(np.ones_like(adj), 1)
-#     adj = np.multiply(adj, triu_mask)
-#     adj = np.multiply(adj, np.random.binomial(1, prob, adj.shape))
-#     adj = adj + adj.T
-
-#     g = nx.from_numpy_matrix(adj)
-#     print("Number of edges:", g.number_of_edges())
-#     print("Number of nodes:", g.number_of_nodes())
-
-#     # Transform to a torch geometric data object
-#     data = torch_geometric.utils.from_networkx(g)
-#     data.x = torch.ones(data.num_nodes, 1)
-
-#     # Lift the topology to a cell complex
-#     lifting = LatentCliqueLifting(edge_prob_mean=0.99, edge_prob_var=0.0)
-#     complex = lifting.lift_topology(data, verbose=True)
