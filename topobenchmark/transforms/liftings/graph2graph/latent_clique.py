@@ -1,7 +1,108 @@
+r"""This module implements the LatentGraphLifting class.
+
+**Background**
+
+A graph is sparse if its number of edges grows proportional to the number
+of nodes. Many real-world graphs are sparse, but they contain many densely
+connected subgraphs and exhibit high clustering coefficients. Moreover,
+such real-world graphs frequently exhibit the small-world property, where
+any two nodes are connected by a short path of length proportional to the
+logarithm of the number of nodes. For instance, these are well-known properties
+of social networks, biological networks, and the Internet.
+
+
+**Contributions**
+
+In this module, we present a novel random lifting procedure from graphs to
+graphs. The procedure is based on a relatively recent proposed Bayesian
+nonparametric random graph model for random clique covers [WT2020]_.
+Specifically, the model can learn latent clique complexes that are consistent
+with the input graph. The model can capture power-law degree distribution,
+global sparsity, and non-vanishing local clustering coefficient.
+Its small-world property is also guaranteed, which is a very attractive property
+for Topological Deep Learning (TDL).
+
+In the original work [WT2020]_, the distribution has been used as a prior on an
+observed input graph. In particular, in the Bayesian setting, the model is useful
+to obtain a distribution on latent clique complexes, i.e. a specific class of
+simplicial complexes, whose 1-skeleton structural properties are consistent with
+the ones of the input graph used to compute the likelihood. Indeed, one of the
+features of the posterior distribution from which the latent complex is sampled
+is that the set of latent 1-simplices (edges) is a superset of the set of edges of
+the input graph.
+
+
+**The random clique cover model**
+
+Let :math:`G = (V, E)` be a graph with :math:V: the set of vertices and
+:math:`E` the set of edges.
+Denote the number of nodes as :math:`N=|V|`.
+A clique cover can be described as a matrix :math:`Z` of size
+:math:`K \times N` where :math:`K` is the number of cliques such that
+:math:`Z_{k,i}=1` if node :math:`i` is in clique :math:`k`
+and :math:`Z_{k,i}=0` otherwise.
+The Random Clique Cover (RCC) Model, defined in [WT2020]_, is a probabilistic
+model for the matrix :math:`Z`.
+This matrix can have an infinite number of rows and columns, but only a
+finite number of them will be active. The model is based on the Indian Buffet
+Process (IBP), which is a distribution over binary matrices with a possibly
+infinite number of rows and columns, or more specifically, the Stable Beta IBP
+as described in [5]. While the mathematics behind the IBP are complex, the model
+admits a highly intuitive representation describe below.
+
+First, recall that a clique is a fully connected subset of vertices.
+Therefore, a clique cover :math:`Z` induces an adjacency matrix by the formula
+:math:`A = \min(ZTZ - \diag(ZTZ), 1)`,
+where :math:`\min` is the element-wise minimum.
+The IBP model can be described recursively as follows:
+
+Conditional on :math:`Z_1, Z_2, \cdots Z_{K-1}`,
+where :math:`Z_j` is the :math:`j`-th row of :math:`Z`.
+Then, :math:`Z_K` is drawn as follows:
+
+#. :math:`Z_K` will contain new unobserved nodes according to a distribution:
+
+    .. math:
+
+        Z_K|Z_1, Z_2, \cdots Z_{K-1} \sim \mathrm{Poisson}(\alpha \Gamma(1+c) \Gamma(N+c+\sigma-1) \Gamma(N+\sigma) \Gamma(c+\sigma))
+
+#. | The probability that a previously observed node :math:`n` will belong to
+   | :math:`K` is proportional to how many cliques it is already in.
+   | Specifically, letting :math:`m_i = \Sigma_k = 1K - 1Z_{k, i}`, then
+   | :math:`P(Z_K, i=1|Z_1, Z_2, \cdots Z_{K-1}) = m_i \sigma K + c - 1`.
+
+The last expression is highly intuitive in the sense that the number of cliques
+that a node will appear in is proportional to the number of cliques it is already in.
+
+The RCC model depends on four parameters :math:`\alpha`, :math:`c`,
+:math:`\sigma`, :math:`\pi`.
+The first three parameters are part of the IBP. Explaining them in detail is
+beyond the scope of this notebook.
+However, the reader may see [TG2009]_.
+Fortunately, the learned (posterior) values of :math:`\alpha`, :math:`\sigma`,
+:math:`c` are strongly determined by the data itself.
+By contrast, :math:`pi` is approximately the probability that an edge is missing
+from the graph. Generally, the lower :math:`\pi` is, the lower the number of
+cliques will be and the less interconnected the nodes of the clique will be.
+
+Importantly, by leveraging the possibility of latent inferred edges, one will
+superimpose the small-world property on the graph.
+
+
+References
+----------
+.. [WT2020] Williamson, S.A., Tec, M., 2020. Random Clique Covers for Graphs with Local
+    Density and Global Sparsity, in: Proceedings of The 35th Uncertainty in Artificial
+    Intelligence Conference.
+    Presented at the Uncertainty in Artificial Intelligence, PMLR, pp. 228--238.
+    http://proceedings.mlr.press/v115/williamson20a/williamson20a.pdf
+.. [TG2009] Teh, Y., Gorur, D., 2009. Indian Buffet Processes with Power-law Behavior,
+    in: Advances in Neural Information Processing Systems. Curran Associates, Inc.
+"""
+
 import networkx as nx
 import numpy as np
 from scipy import stats
-from scipy.sparse import csr_matrix
 from scipy.special import gammaln, logsumexp
 from tqdm.auto import tqdm
 
@@ -87,20 +188,19 @@ class LatentGraphLifting(LiftingMap):
 
 class _LatentCliqueModel:
     """Latent clique cover model for network data corresponding to the
-    Partial Observability Setting of the Random Clique Cover (Williamson & Tec, 2020) paper.
+    Partial Observability Setting of the Random Clique Cover of [WT2020]_.
 
-    Williamson & Tec (2020). "Random clique covers for graphs with local density and global sparsity". UAI 2020.
-    http://proceedings.mlr.press/v115/williamson20a/williamson20a.pdf
-    The model is based on the Stable Beta-Indian Buffet Process (SB-IBP). See Teh and Gorur (2010),
-    "Indian Buffet Processes with Power-Law Behavior", NIPS 2010 for additional reference.
+    The model is based on the Stable Beta-Indian Buffet Process (SB-IBP) [TG2009]_.
 
-    The model depends on four parameters: alpha, sigma, c, and pie. The parameters
-    alpha, sigma and c arepart of the SB-IBP and are described in Williamson & Tec (2020) and
-    Teh & Gorur (2010) with the same names. The parameter pie is was introduced by Williamson & Tec (2020)
-    and is a parameter for the model that determines the prior probability that an edge is unobserved.
+    The model depends on four parameters: alpha, sigma, c, and pie.
+    The parameters alpha, sigma and c arepart of the SB-IBP and are described in
+    [WT2020]_ and [TG2009]_ with the same names.
+    The parameter pie is was introduced by [WT2020]_
+    and is a parameter for the model that determines the prior probability that
+    an edge is unobserved.
 
-    The following properties of a Random Clique Cover model are useful to interpret the
-    parameters alpha, c, and sigma.
+    The following properties of a Random Clique Cover model are useful to
+    interpret the parameters alpha, c, and sigma.
 
     Parameters
     ----------
@@ -144,6 +244,16 @@ class _LatentCliqueModel:
         likelihood computation.
 
     **Note**: The values of (K, N) are used interchanged from the paper notation.
+
+    References
+    ----------
+    .. [WT2020] Williamson, S.A., Tec, M., 2020. Random Clique Covers for Graphs with Local
+        Density and Global Sparsity, in: Proceedings of The 35th Uncertainty in Artificial
+        Intelligence Conference.
+        Presented at the Uncertainty in Artificial Intelligence, PMLR, pp. 228--238.
+        http://proceedings.mlr.press/v115/williamson20a/williamson20a.pdf
+    .. [TG2009] Teh, Y., Gorur, D., 2009. Indian Buffet Processes with Power-law Behavior,
+        in: Advances in Neural Information Processing Systems. Curran Associates, Inc.
     """
 
     def __init__(

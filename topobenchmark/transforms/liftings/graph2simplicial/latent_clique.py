@@ -1,3 +1,44 @@
+r"""This module implements the LatentCliqueLifting class.
+
+In the context of Topological Deep Learning [PBB2024]_[HZP2023]_,
+and the very recently emerged paradigm of Latent Topology Inference
+(LTI) [BST2023]_, it is natural to look at the model in [WT2020]_ as a
+novel LTI method able to infer a random latent simplicial complex from an
+input graph. Or, in other words, to use [WT2020]_ as a novel random lifting
+procedure from graphs to simplicial complexes.
+
+To summarize, this is:
+
+* a non-deterministic lifting
+* not present in the literature as a lifting procedure
+* based on connectivity
+* | modifying the initial connectivity of the graph by
+  | adding edges (thus, this can be also considered as a graph rewiring method).
+
+The lifting ensures both 1) small-world property and 2) edge/cell sparsity.
+Combining these two properties is very attractive for Topological Deep Learning (TDL)
+because it ensures computational efficiency due to the reduced number of higher-order
+connections: only a few message-passing layers connect any two nodes.
+
+References
+----------
+.. [WT2020] Williamson, S.A., Tec, M., 2020. Random Clique Covers for Graphs with Local
+    Density and Global Sparsity, in: Proceedings of The 35th Uncertainty in Artificial
+    Intelligence Conference.
+    Presented at the Uncertainty in Artificial Intelligence, PMLR, pp. 228--238.
+    http://proceedings.mlr.press/v115/williamson20a/williamson20a.pdf
+.. [PBB2024] Papamarkou, T., Birdal, T., Bronstein, M., et al., 2024.
+    Position Paper: Challenges and Opportunities in Topological Deep Learning.
+    https://doi.org/10.48550/arXiv.2402.08871
+.. [HZP2023] Hajij, M., Zamzmi, G., Papamarkou, T., et al., 2023.
+    Topological Deep Learning: Going Beyond Graph Data.
+    https://doi.org/10.48550/arXiv.2206.00606
+.. [BST2023] Battiloro, C., Spinelli, I., Telyatnikov, L., et al., 2023.
+    From Latent Graph to Latent Topology Inference: Differentiable Cell
+    Complex Module. Presented at the The Twelfth International Conference
+    on Learning Representations.
+"""
+
 from topobenchmark.transforms.liftings.base import ComposedLiftingMap
 from topobenchmark.transforms.liftings.graph2graph.latent_clique import (
     LatentGraphLifting,
