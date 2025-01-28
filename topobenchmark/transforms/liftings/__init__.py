@@ -9,6 +9,7 @@ from .base import (  # noqa: F401
     LiftingTransform,
 )
 from .graph2cell import GRAPH2CELL_LIFTINGS
+from .graph2graph import GRAPH2GRAPH_LIFTINGS
 from .graph2hypergraph import GRAPH2HYPERGRAPH_LIFTINGS
 from .graph2simplicial import GRAPH2SIMPLICIAL_LIFTINGS
 
@@ -16,6 +17,7 @@ LIFTINGS = {
     **GRAPH2CELL_LIFTINGS,
     **GRAPH2HYPERGRAPH_LIFTINGS,
     **GRAPH2SIMPLICIAL_LIFTINGS,
+    **GRAPH2GRAPH_LIFTINGS,
 }
 
 
