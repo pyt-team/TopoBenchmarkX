@@ -20,7 +20,7 @@ from topobenchmark.transforms.liftings.hypergraph2simplicial.heat_lifting import
 ## Ensure the cofacet relations hold; this should hold for all simplices with base weights / "topological weight"
 def cofacet_constraint(
     S: dict,
-    d: int = None,
+    d: None,
     relation: str = ">=",
     verbose: bool = False,
 ) -> bool:

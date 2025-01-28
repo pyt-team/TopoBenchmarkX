@@ -1,3 +1,80 @@
+r"""This module implements the HypergraphHeatLifting.
+
+It implements the hypergraph-to-simplicial topological conversion described in
+[BGB2022]_, which is aimed at encoding the higher-order information of a hypergraph
+into a weighted simplicial complex without loss of information.
+One notable application of this approach is to bring the power of the heat kernel
+to the realm of hypergraphs.
+
+Note this is not a 'lift' in the sense that we are going from a higher order
+structure to a (theoretically) lower order one.
+
+**Overview**
+
+The high-level algorithmic pipeline of this lift is as follows:
+
+#. | Define an undirected hypergraph  :math:`H = (V, E)` to be converted to
+   | simplicial complex
+#. Take the downward / simplicial closure :math:`S` of `H`
+#. | For each simplex :math:`\sigma \in S`, compute a weight map
+   | :math:`f: S \to \mathbb{R}_+` by combining the simplex's topological weight
+   | :math:`w_{\sigma}` with its associated affinity weight :math:`\omega_{\sigma}`:
+
+   .. math::
+
+        w(\sigma)=\omega_\sigma+\sum_{\sigma^{\prime} \in \operatorname{cofacet}(\sigma)} w_\sigma
+
+#. | The computed weight function :math:`w(\sigma)` induces an inner product :math:`\langle \rangle_w`
+   | on the cochain space :math:`C^\phi(S, R)` of :math:`S`.
+   | To capture higher-order interactions exploiting this inner product, choose a weighted Hodge
+   | Laplacian operators :math:`L_p`:
+
+    .. math::
+
+        \langle f, g\rangle=\sum_{\sigma \in S, \operatorname{dim}(\sigma)=d} w_\sigma
+        \cdot f([\sigma]) g([\sigma]), \quad L_p=L_p^{\mathrm{up}}+L_p^{\mathrm{dn}}
+
+#. | Choose a weight-dependent featurization of :math:`L_p` for learning purposes; a classical
+   | featurization is the `Heat Kernel Signature <https://en.wikipedia.org/wiki/Heat_kernel_signature>`_,
+   | which captures multiscale diffusion-based information via the heat kernel.
+
+
+**Properties of the weights**
+
+There are many ways to map higher-order interactions to simplicial weights; to define a notion of 'topological weight',
+[BGB2022]_ define a weighting scheme that satisfies:
+
+.. math::
+
+    \begin{cases}w_\sigma>0 & \text { for every face } \sigma \in S, \\ w_\sigma
+    \geq \sum_{\tau \supset \sigma} w_\tau & \text { for every codim. } 1
+    \text { coface } \tau \in S \\ w_v=\sum_{h \in H} 1(v \in h) &
+    \text { for all } v \in V .\end{cases}
+
+
+This lifting implements the weighting scheme defined by Eq. 3 & Eqs. (63-65) from [BGB2022]_,
+which not only satisfies all these properties, but can also be computed quickly for the
+:math:`d`-skeleton :math:`S_d \subseteq S`.
+
+For hypergraphs, the affinity weight is deduced by the number of times
+:math:`c` a face :math:`\sigma \in S` appears in a hyperedge :math:`h \in H`
+of order :math:`n`, while the topological weight depends only the dimensions
+of the faces that contain the given simplex.
+
+The primary use-case for this simplex-weight mapping is to make a valid inner product on
+the cochain space that captures higher-order interactions using only simplicial structure.
+In particular, multiscale invariants such as those deriving from the heat kernel were shown
+in [BGB2022]_ to yield more information gain than in the unweighted settings.
+
+
+References
+----------
+.. [BGB2022] Baccini, F., Geraci, F., Bianconi, G., 2022.
+    Weighted simplicial complexes and their representation power of higher-order
+    network data and topology. Phys. Rev. E 106, 034319.
+    https://doi.org/10.1103/PhysRevE.106.034319
+"""
+
 import itertools as it
 import math
 from array import array
