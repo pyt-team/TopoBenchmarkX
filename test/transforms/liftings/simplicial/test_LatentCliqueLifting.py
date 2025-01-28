@@ -46,15 +46,13 @@ class TestLatentCliqueLifting:
         # Load the graph
         self.data_test_one = create_clique_graph()
         self.data_test_two = load_manual_graph()
+
         # Initialise the SimplicialCliqueLifting class
         self.lifting_edge_prob_one = Graph2SimplicialLiftingTransform(
             LatentCliqueLifting(edge_prob_mean=1),
-            data2domain="Identity",
         )
         self.lifting_edge_prob_any = Graph2SimplicialLiftingTransform(
-            # LatentCliqueLifting(edge_prob=random.uniform(0, 1)),
             LatentCliqueLifting(edge_prob_mean=random.uniform(0, 1)),
-            data2domain="Identity",
         )
 
     def test_lift_topology(self):

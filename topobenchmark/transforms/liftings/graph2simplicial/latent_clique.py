@@ -1,12 +1,10 @@
+import networkx as nx
 import numpy as np
-import torch
-import torch_geometric
 from scipy import stats
 from scipy.sparse import csr_matrix
 from scipy.special import gammaln, logsumexp
 from tqdm.auto import tqdm
 
-from topobenchmark.data.utils import Data2Graph
 from topobenchmark.transforms.liftings.base import (
     LiftingMap,
 )
@@ -47,58 +45,47 @@ class LatentCliqueLifting(LiftingMap):
         verbose=False,
     ):
         super().__init__()
-        self.edge_prob_mean = edge_prob_mean
-        min_var = self.edge_prob_mean * (1 - self.edge_prob_mean)
-        self.edge_prob_var = min(edge_prob_var, 0.5 * min_var)
         self.it = it
-        self.init = init
         self.verbose = verbose
 
-    def lift(self, data: torch_geometric.data.Data) -> dict:
+        min_var = edge_prob_mean * (1 - edge_prob_mean)
+        edge_prob_var = min(edge_prob_var, 0.5 * min_var)
+        self.latent_model = _LatentCliqueModel(
+            edge_prob_mean=edge_prob_mean,
+            edge_prob_var=edge_prob_var,
+        )
+
+    def lift(self, domain):
         r"""Finds the cycles of a graph and lifts them to 2-cells.
 
         Parameters
         ----------
-        data : torch_geometric.data.Data
-            The input data to be lifted.
+        domain : nx.Graph
+            Graph to be lifted.
 
         Returns
         -------
-        dict
-            The lifted topology.
+        toponetx.SimplicialComplex
+            Lifted simplicial complex.
         """
-        # Make adjacency matrix from data
-        N = data.num_nodes
-        adj = np.zeros((N, N))
-        for j in range(data.edge_index.shape[1]):
-            adj[data.edge_index[0, j], data.edge_index[1, j]] = 1
-            adj[data.edge_index[1, j], data.edge_index[0, j]] = 1
-
         # Create the latent clique model and fit using Gibbs sampling
-        mod = _LatentCliqueModel(
-            adj,
-            init=self.init,
-            edge_prob_mean=self.edge_prob_mean,
-            edge_prob_var=self.edge_prob_var,
-        )
-        it = self.it if self.it is not None else data.num_edges
-        mod.sample(
+        it = self.it if self.it is not None else domain.number_of_edges()
+
+        self.latent_model.adj = nx.adjacency_matrix(domain).todense()
+        self.latent_model.sample(
             sample_hypers=True,
             num_iters=it,
             do_gibbs=False,
             verbose=self.verbose,
         )
 
-        # # Translate fitted model to a new topology
-        cic = mod.Z.T @ mod.Z
+        # Translate fitted model to a new topology
+        cic = self.latent_model.Z.T @ self.latent_model.Z
         adj = np.minimum(cic - np.diag(np.diag(cic)), 1)
-        edges = np.array(np.where(adj == 1))
-        edges = torch.LongTensor(edges).to(data.edge_index.device)
+        lifted_graph = nx.from_numpy_array(adj)
+        nx.set_node_attributes(lifted_graph, dict(domain.nodes(data=True)))
 
-        new_data = torch_geometric.data.Data(x=data.x, edge_index=edges)
-
-        graph = Data2Graph().adapt(new_data)
-        return SimplicialCliqueLifting().lift(graph)
+        return SimplicialCliqueLifting().lift(lifted_graph)
 
 
 class _LatentCliqueModel:
@@ -164,30 +151,42 @@ class _LatentCliqueModel:
 
     def __init__(
         self,
-        adj,
         edge_prob_mean=0.9,
         edge_prob_var=0.05,
         init="edges",
         seed=None,
+        adj=None,
     ):
-        # TODO: use .fit or .set_adj instead?
-
         self.init = init
+        self.rng = np.random.default_rng(seed)
+
+        # Initialize parameters
+        self._init_params()
+
+        # Initialize hyperparameters
+        self._init_hyperparams(edge_prob_mean, edge_prob_var)
+
         self.adj = adj
+
+    @property
+    def adj(self):
+        return self._adj
+
+    @adj.setter
+    def adj(self, adj):
+        self._adj = adj
+
+        if adj is None:
+            return
+
         self.num_nodes = adj.shape[0]
         mask = np.triu(np.ones((self.num_nodes, self.num_nodes)), 1)
         half_adj = np.multiply(adj, mask)
         self.edges = np.array(np.where(half_adj == 1)).T
         self.num_edges = len(self.edges)
-        self.rng = np.random.default_rng(seed)
 
         # Initialize clique cover matrix
         self._init_Z()
-
-        # Initialize parameters
-        self._init_params()
-        # Initialize hyperparameters
-        self._init_hyperparams(edge_prob_mean, edge_prob_var)
 
         # Current number of clusters
         self.K = self.Z.shape[0]
@@ -228,6 +227,7 @@ class _LatentCliqueModel:
                 self.Z[i, self.edges[i][0]] = 1
                 self.Z[i, self.edges[i][1]] = 1
             self.lamb = self.num_edges
+
         elif self.init == "single":
             self.Z = np.ones((1, self.num_nodes), dtype=int)
             self.lamb = 1
