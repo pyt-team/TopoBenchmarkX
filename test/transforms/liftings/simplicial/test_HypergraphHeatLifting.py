@@ -5,7 +5,9 @@ import toponetx as tnx
 import torch
 from torch_geometric.data import Data
 
-from modules.transforms.liftings.hypergraph2simplicial.heat_lifting import (
+from topobenchmark.data.utils import Complex2Dict
+from topobenchmark.transforms.liftings.base import LiftingTransform
+from topobenchmark.transforms.liftings.hypergraph2simplicial.heat_lifting import (
     HypergraphHeatLifting,
     downward_closure,
     top_weights,
@@ -17,13 +19,18 @@ from modules.transforms.liftings.hypergraph2simplicial.heat_lifting import (
 
 ## Ensure the cofacet relations hold; this should hold for all simplices with base weights / "topological weight"
 def cofacet_constraint(
-    S: dict, d: int = None, relation: str = ">=", verbose: bool = False  # noqa: RUF013
+    S: dict,
+    d: int = None,
+    relation: str = ">=",
+    verbose: bool = False,
 ) -> bool:
     assert isinstance(S, dict), "Input mut be a simplicial weight map"
     relation_holds: bool = True
     for s in S:
         s_weight = S[s]
-        s_cofacets = [c for c in S if len(c) == len(s) + 1 and np.all(np.isin(s, c))]
+        s_cofacets = [
+            c for c in S if len(c) == len(s) + 1 and np.all(np.isin(s, c))
+        ]
         c_weight = np.sum([S[c] for c in s_cofacets])
         relation_holds &= (
             eval(f"s_weight {relation} c_weight")
@@ -113,7 +120,9 @@ class TestHypergraphHeatLifting:
         sc_lift = sum(map(weighted_simplex, H), Counter())
         for d in range(3):
             d_map = top_weights(*downward_closure(H, d=d, coeffs=True))
-            assert np.all([np.isclose(sc_lift[s], w) for s, w in d_map.items()])
+            assert np.all(
+                [np.isclose(sc_lift[s], w) for s, w in d_map.items()]
+            )
 
     def test_lift_api(self):
         H = [
@@ -129,14 +138,17 @@ class TestHypergraphHeatLifting:
             (0, 2, 4, 5),
         ]
         ## Testing the actual lifting API
-        lifting = HypergraphHeatLifting(complex_dim=2)
+        lifting = LiftingTransform(
+            HypergraphHeatLifting(),
+            domain2dict=Complex2Dict(),
+        )
         hg = tnx.ColoredHyperGraph()
         hg.add_cells_from(H)
         B = hg.incidence_matrix(0, 1).tocsr()
         B = torch.sparse_coo_tensor(np.array(B.nonzero()), B.data, B.shape)
 
         ## Note the only requirement for the lift is the hyperedges
-        lifted_dataset = lifting.lift_topology(Data(incidence_hyperedges=B))
+        lifted_dataset = lifting.forward(Data(incidence_hyperedges=B))
 
         assert isinstance(lifted_dataset, Data)
         assert (
@@ -151,12 +163,6 @@ class TestHypergraphHeatLifting:
             hasattr(lifted_dataset, "incidence_2")
             and lifted_dataset.incidence_2.shape[1] == 9
         )
-        assert (
-            hasattr(lifted_dataset, "weights_0") and len(lifted_dataset.weights_0) == 6
-        )
-        assert (
-            hasattr(lifted_dataset, "weights_1") and len(lifted_dataset.weights_1) == 12
-        )
-        assert (
-            hasattr(lifted_dataset, "weights_2") and len(lifted_dataset.weights_2) == 9
-        )
+        assert hasattr(lifted_dataset, "x_0") and len(lifted_dataset.x_0) == 6
+        assert hasattr(lifted_dataset, "x_1") and len(lifted_dataset.x_1) == 12
+        assert hasattr(lifted_dataset, "x_2") and len(lifted_dataset.x_2) == 9
