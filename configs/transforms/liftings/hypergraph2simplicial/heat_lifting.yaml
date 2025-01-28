@@ -1,0 +1,5 @@
+transform_type: 'lifting'
+transform_name: "HypergraphHeatLifting"
+complex_dim: 2
+signed: True
+feature_lifting: ProjectionSum
