@@ -188,3 +188,22 @@ class LiftingMap(abc.ABC):
     @abc.abstractmethod
     def lift(self, domain):
         """Lift domain."""
+
+
+class ComposedLiftingMap(LiftingMap):
+    """Composition of lifting maps.
+
+    Parameters
+    ----------
+    liftings_maps : list[LiftingMap]
+    """
+
+    def __init__(self, lifting_maps):
+        self.lifting_maps = lifting_maps
+
+    def lift(self, domain):
+        """Lift domain."""
+        for lifting_map in self.lifting_maps:
+            domain = lifting_map(domain)
+
+        return domain
