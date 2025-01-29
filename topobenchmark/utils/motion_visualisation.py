@@ -72,26 +72,23 @@ class MotionVisualizationCallback(Callback):
 
     def on_train_epoch_end(self, trainer, pl_module):
         """Visualize predictions at the end of each epoch."""
-        """
         if not trainer.sanity_checking:
             print("WWOOOOOO")
             # Get a sample from validation set
             batch = next(iter(trainer.train_dataloader))
-            print('got batch')
 
             # Move to same device as model
             # batch = {k: v.to(pl_module.device) if isinstance(v, torch.Tensor) else v
             #         for k, v in batch.items()}
             # batch["x_0"] = batch["x"]
             batch.x_0 = batch.x.to(pl_module.device)
-            print('moved to device')
+
             # Get predictions
             pl_module.eval()
             with torch.no_grad():
                 outputs = pl_module(batch)
-            print('got outputs')
             pl_module.train()
-            print('back to train')
+
             # outputs["labels"].shape = [844800]
             ground_truth = outputs["labels"].reshape(
                 256, 50, 22, 3
@@ -103,20 +100,27 @@ class MotionVisualizationCallback(Callback):
 
             ground_truth_ex = ground_truth[0]
             model_output_ex = model_output[0]
-            print('got ex')
+
             # Create directory if it doesn't exist
             os.makedirs("visualisations", exist_ok=True)
-            print('made dir')
+
             temp_images = []
             for i in range(50):
                 ground_truth_frame = ground_truth_ex[i]
                 model_output_frame = model_output_ex[i]
+
+                # scale model output to be in the same range as ground truth
+                height_in_ground_truth = ground_truth_frame[:, 2]
+                height_in_model_output = model_output_frame[:, 2]
+                scale_factor = height_in_ground_truth.max() / height_in_model_output.max()
+                model_output_frame[:, :] = model_output_frame[:, :] * scale_factor
 
                 # Create visualization
                 fig = plt.figure(figsize=(15, 5))
 
                 # Plot ground truth
                 ax1 = fig.add_subplot(121, projection="3d")
+                
                 true_joints = (
                     ground_truth_frame.cpu().numpy()
                 )  # Adjust key based on your data structure
@@ -130,6 +134,14 @@ class MotionVisualizationCallback(Callback):
                 )  # Adjust key based on your output structure
                 self.plot_skeleton(pred_joints, ax2)
                 ax2.set_title(f"Prediction - Frame {i}")
+
+                # set fixed axis ranges
+                ax1.set_xlim(-1, 1)
+                ax1.set_ylim(-1, 1)
+                ax1.set_zlim(-1, 1)
+                ax2.set_xlim(-1, 1)
+                ax2.set_ylim(-1, 1)
+                ax2.set_zlim(-1, 1)
 
                 # Set common properties
                 for ax in [ax1, ax2]:
@@ -150,10 +162,7 @@ class MotionVisualizationCallback(Callback):
                 images,
                 fps=10,
             )  # Adjust fps as needed
-            print('made gif')
+
             # Clean up temporary files
             for temp_file in temp_images:
                 os.remove(temp_file)
-            print('cleaned up')
-            """
-        print("visualize here")

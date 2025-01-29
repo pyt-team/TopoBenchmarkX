@@ -1,3 +1,3 @@
 _target_: topobenchmark.loss.model.GCNextLoss
 
-frames_considered: 10
+frames_considered: 50

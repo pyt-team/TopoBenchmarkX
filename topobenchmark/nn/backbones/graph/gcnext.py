@@ -149,7 +149,6 @@ class GCNext(nn.Module):
         motion_input = x.view(
             batch_size, self.n_frames, self.n_nodes_per_frame
         )
-
         #######
         ## TRANSFORM TO FREQUENCY DOMAIN WITH
         ##    DISCRETE COSINE TRANSFORM
@@ -221,7 +220,7 @@ class GCNext(nn.Module):
 
         # Reshape back to torch_geometric format [batch*num_nodes, features]
         motion_feats = motion_feats.reshape(-1, 1)
-
+        
         return motion_feats
 
 

@@ -7,7 +7,7 @@ defaults:
   - dataset: graph/H36MDataset
   - transforms: ${get_default_transform:${dataset},${model}} #no_transform
   - optimizer: default
-  - loss: gcnext_loss
+  - loss: default #gcnext_loss
   - model: graph/gcnext
   - evaluator: pose_regression
   - callbacks: default

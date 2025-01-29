@@ -18,7 +18,7 @@ class GCNextLoss(AbstractLoss):
         Custom modules' losses to be used.
     """
 
-    def __init__(self, frames_considered=10):  # noqa: B006
+    def __init__(self, frames_considered=50):  # noqa: B006
         super().__init__()
         self.frames_considered = frames_considered
         self.criterion = torch.nn.MSELoss()
@@ -45,8 +45,12 @@ class GCNextLoss(AbstractLoss):
         target = model_out["labels"]
 
         # target = target.unsqueeze(1)
-        pred = pred.view(-1, 50, 22, 3, 64)
-        target = target.view(-1, 50, 22, 3, 1)
+        pred = pred.view(-1, 50, 22, 3)
+        target = target.view(-1, 50, 22, 3)
+
+        # here we want to plot the predicted frames and the target frames to compare them
+        visualize_skeleton_static(pred)
+        visualize_skeleton_static(target)
 
         # Compute loss for the frames considered
         pred_considered = pred[:, :self.frames_considered, :, :]
@@ -58,3 +62,20 @@ class GCNextLoss(AbstractLoss):
         model_out["loss"] = loss
 
         return model_out
+
+
+def visualize_skeleton_static(skeleton):
+    """Plot the frames of th eskeleton, in a sequence
+    
+    Parameters
+    ----------
+    skeleton : torch.Tensor
+        The skeleton to visualize.
+        shape: [batch_size, n_frames, n_joints, 3]
+    """
+    # # pick the first batch size
+    # skeleton = skeleton[0] # shape: [n_frames, n_joints, 3]
+    
+    # for frame in skeleton:
+    #     visualize_skeleton(frame)
+    pass

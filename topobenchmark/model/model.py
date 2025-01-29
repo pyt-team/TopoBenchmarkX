@@ -120,7 +120,6 @@ class TBModel(LightningModule):
 
         # Loss
         model_out = self.process_outputs(model_out=model_out, batch=batch)
-
         # Metric
         model_out = self.loss(model_out=model_out, batch=batch)
         self.evaluator.update(model_out)
