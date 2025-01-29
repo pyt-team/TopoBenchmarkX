@@ -110,8 +110,8 @@ class MotionVisualizationCallback(Callback):
                 model_output_frame = model_output_ex[i]
 
                 # scale model output to be in the same range as ground truth
-                height_in_ground_truth = ground_truth_frame[:, 2]
-                height_in_model_output = model_output_frame[:, 2]
+                height_in_ground_truth = ground_truth_frame[:, 1]
+                height_in_model_output = model_output_frame[:, 1]
                 scale_factor = height_in_ground_truth.max() / height_in_model_output.max()
                 model_output_frame[:, :] = model_output_frame[:, :] * scale_factor
 
