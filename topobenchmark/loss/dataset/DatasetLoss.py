@@ -4,6 +4,7 @@ import torch
 import torch_geometric
 
 from topobenchmark.loss.base import AbstractLoss
+from topobenchmark.loss.dataset.h36m_criterion import H36MCriterion
 
 
 class DatasetLoss(AbstractLoss):
@@ -24,6 +25,8 @@ class DatasetLoss(AbstractLoss):
             self.criterion = torch.nn.CrossEntropyLoss()
         elif self.task == "regression" and self.loss_type == "mse":
             self.criterion = torch.nn.MSELoss()
+        elif self.task == "regression" and self.loss_type == "mse_h36m":
+            self.criterion = H36MCriterion()
         elif self.task == "regression" and self.loss_type == "mae":
             self.criterion = torch.nn.L1Loss()
         else:

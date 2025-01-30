@@ -13,7 +13,7 @@ parameters:
  num_features: 1 # one feature per node
  num_classes: 1 # number of output features per node
  task: regression
- loss_type: mse
+ loss_type: mse_h36m
  monitor_metric: mpjpe_10_frames
  task_level: node
  metrics:
