@@ -1,6 +1,0 @@
-_target_: topobenchmark.evaluator.pose_evaluator.PoseEvaluator
-task: regression
-task_level: node
-
-# Metrics
-metrics: [mpjpe]
